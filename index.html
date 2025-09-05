@@ -2,20 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>AR Test – Podium</title>
+  <title>Event AR – Models</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <style>
-    html,body{height:100%;margin:0}
+    html,body{height:100%;margin:0;font-family:system-ui,Arial}
+    header{position:fixed;top:0;left:0;right:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;padding:10px;background:#ffffffee;border-bottom:1px solid #eee;z-index:10}
+    .btn{padding:8px 12px;border:1px solid #ddd;border-radius:10px;background:#f7f7f7;cursor:pointer}
+    .btn:active{transform:scale(.98)}
+    .spacer{height:58px}
     model-viewer{width:100%;height:100%}
-    .cta{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);
-         padding:10px 16px;border:0;border-radius:10px;background:#0a7cff;color:#fff}
-    .err{position:fixed;left:10px;bottom:10px;background:#ffecec;color:#900;
-         padding:8px 12px;border:1px solid #f1c7c7;border-radius:6px;display:none}
+    .cta{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);padding:10px 16px;border:0;border-radius:10px;background:#0a7cff;color:#fff}
+    .err{position:fixed;left:10px;bottom:10px;background:#ffecec;color:#900;padding:8px 12px;border:1px solid #f1c7c7;border-radius:6px;display:none;max-width:80%}
   </style>
 </head>
 <body>
-  <model-viewer id="mv"
+  <header>
+    <button class="btn" data-model="models/podium.glb">Podium</button>
+    <button class="btn" data-model="models/concert-stage.glb">Concert Stage</button>
+  </header>
+  <div class="spacer"></div>
+
+  <model-viewer id="viewer"
     src="models/podium.glb"
     ar ar-modes="webxr scene-viewer quick-look"
     ar-placement="floor" ar-scale="auto"
@@ -23,12 +31,24 @@
     shadow-intensity="1" exposure="1">
     <button slot="ar-button" class="cta">👀 View in your space</button>
   </model-viewer>
+
   <div id="err" class="err"></div>
+
   <script>
-    mv.addEventListener('error', () => {
-      const e = document.getElementById('err');
-      e.textContent = "Couldn’t load models/podium.glb. Check the file name, folder, and size (<20–30 MB).";
-      e.style.display = 'block';
+    const viewer = document.getElementById('viewer');
+    const errBox = document.getElementById('err');
+
+    document.querySelectorAll('button[data-model]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        errBox.style.display = 'none';
+        viewer.src = btn.getAttribute('data-model');
+        // If you later add iPhone USDZ: viewer.setAttribute('ios-src', viewer.src.replace('.glb','.usdz'));
+      });
+    });
+
+    viewer.addEventListener('error', ()=>{
+      errBox.textContent = "Couldn't load " + viewer.src + ". Check the file path/name and size (<20–30 MB).";
+      errBox.style.display = 'block';
     });
   </script>
 </body>
