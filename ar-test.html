@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AR Test — Cube (Android/Chrome)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{margin:0;height:100%;background:#000;font-family:system-ui,Arial}
+    #log{position:fixed;top:8px;left:8px;right:8px;z-index:20;
+         background:rgba(0,0,0,.55);color:#fff;padding:8px 10px;border-radius:8px;
+         font-size:12px;line-height:1.4;max-height:40vh;overflow:auto}
+    #btn{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+         z-index:20;border:0;border-radius:999px;padding:12px 18px;font-size:16px;
+         background:#0a7cff;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    canvas{display:block;width:100vw;height:100vh}
+  </style>
+</head>
+<body>
+  <div id="log">Boot…</div>
+  <button id="btn">Enter AR</button>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
+
+    const logEl = document.getElementById('log');
+    const btn   = document.getElementById('btn');
+    const log = (m)=>{ logEl.innerText = (typeof m==='string'?m:JSON.stringify(m,null,2)) + "\n\n" + logEl.innerText; };
+
+    // Three basics
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,3,2);
+    scene.add(dir);
+
+    // A simple cube we’ll place at the hit result
+    const geom = new THREE.BoxGeometry(0.3,0.3,0.3);
+    const mat  = new THREE.MeshStandardMaterial({color:0x00b2ff, metalness:0.1, roughness:0.6});
+    const cube = new THREE.Mesh(geom, mat); cube.visible = false;
+    scene.add(cube);
+
+    // Reticle
+    const ring = new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2);
+    const reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({color:0xffffff}));
+    reticle.visible = false;
+    scene.add(reticle);
+
+    let session = null, hitTestSource = null, localSpace = null;
+
+    // Support checks + button state
+    async function check() {
+      if (!isSecureContext){ btn.disabled=true; btn.textContent='HTTPS required'; log('Open over HTTPS'); return false; }
+      if (!('xr' in navigator)){ btn.disabled=true; btn.textContent='WebXR not available'; log('Use Android + Chrome with ARCore'); return false; }
+      const ok = await navigator.xr.isSessionSupported?.('immersive-ar');
+      btn.disabled = !ok;
+      btn.textContent = ok ? 'Enter AR' : 'AR not supported';
+      log({ secure:isSecureContext, hasXR:!!navigator.xr, immersiveAR:ok });
+      return ok;
+    }
+
+    btn.addEventListener('click', async ()=>{
+      try{
+        const supported = await check();
+        if (!supported) return;
+
+        session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test'] });
+        renderer.xr.setReferenceSpaceType('local');
+        await renderer.xr.setSession(session);
+
+        const viewerSpace = await session.requestReferenceSpace('viewer');
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+        localSpace = await session.requestReferenceSpace('local');
+
+        // Tap to place cube
+        renderer.domElement.addEventListener('touchend', ()=>{
+          if (!reticle.visible) return;
+          cube.position.copy(reticle.position);
+          cube.quaternion.copy(reticle.quaternion);
+          cube.visible = true;
+          log('Placed cube');
+        });
+
+        session.addEventListener('end', ()=>{
+          session = null; hitTestSource = null; localSpace = null;
+          reticle.visible = false; cube.visible = false;
+          log('AR session ended');
+        });
+
+        log('AR session started. Move phone; tap to place cube.');
+      }catch(e){
+        log('Failed to start AR: '+(e?.message||e));
+      }
+    });
+
+    renderer.setAnimationLoop((t, frame)=>{
+      if (frame && hitTestSource && localSpace){
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length){
+          const pose = hits[0].getPose(localSpace);
+          reticle.visible = true;
+          reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+        }else{
+          reticle.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
+    });
+
+    addEventListener('resize', ()=>{
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    check();
+  </script>
+</body>
+</html>
