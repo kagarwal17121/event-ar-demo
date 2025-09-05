@@ -7,26 +7,29 @@
   <style>
     :root{ --accent:#0a7cff; --bg:#ffffffee; --border:#e9e9e9; }
     html,body{margin:0;height:100%;font-family:system-ui,Arial;background:#000}
-    /* Top bar: catalog + actions (outside AR) */
+    /* Top bar: catalog + actions */
     .ui {
       position:fixed; left:0; right:0; top:0; z-index:10;
       display:flex; gap:8px; align-items:center; justify-content:center;
       padding:10px; background:var(--bg); border-bottom:1px solid var(--border);
     }
     label{font-size:14px}
-    select{ padding:8px 10px; border:1px solid var(--border); border-radius:8px; min-width:240px; }
-    .btn {
-      padding:10px 14px; border:1px solid var(--border);
-      border-radius:10px; background:#f7f7f7; cursor:pointer;
+    select{
+      padding:8px 10px; border:1px solid var(--border);
+      border-radius:8px; min-width:240px; background:#fff; font-size:14px;
     }
-    .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-    .hint {
+    .btn{
+      padding:10px 14px; border:1px solid var(--border);
+      border-radius:10px; background:#f7f7f7; cursor:pointer; font-size:14px;
+    }
+    .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .hint{
       position:fixed; left:50%; transform:translateX(-50%);
       bottom:12px; color:#fff; background:rgba(0,0,0,.55);
       padding:6px 10px; border-radius:8px; font-size:12px; display:none; z-index:9;
+      max-width:90%; text-align:center;
     }
-    /* Canvas behind UI */
-    canvas { display:block; width:100vw; height:100vh; }
+    canvas{ display:block; width:100vw; height:100vh; }
   </style>
 </head>
 <body>
@@ -47,12 +50,20 @@
     import { ARButton } from 'https://unpkg.com/three@0.152.2/examples/jsm/webxr/ARButton.js';
 
     // DOM
-    const sel   = document.getElementById('modelSelect');
-    const addBtn= document.getElementById('addBtn');
-    const undoBtn=document.getElementById('undoBtn');
-    const clearBtn=document.getElementById('clearBtn');
-    const enterAR= document.getElementById('enterAR');
-    const hint  = document.getElementById('hint');
+    const sel       = document.getElementById('modelSelect');
+    const addBtn    = document.getElementById('addBtn');
+    const undoBtn   = document.getElementById('undoBtn');
+    const clearBtn  = document.getElementById('clearBtn');
+    const enterAR   = document.getElementById('enterAR');
+    const hint      = document.getElementById('hint');
+
+    // Toast helper
+    function toast(msg, ms=2600){
+      hint.textContent = msg;
+      hint.style.display = 'block';
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => { hint.style.display = 'none'; }, ms);
+    }
 
     // Three basics
     const scene = new THREE.Scene();
@@ -63,11 +74,9 @@
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // Light & ground shadow (simple)
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.1);
-    scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(1, 3, 2);
+    // Lights
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,3,2);
     scene.add(dir);
 
     // Reticle for hit-test
@@ -77,125 +86,189 @@
     reticle.visible = false;
     scene.add(reticle);
 
-    // Session + hit test state
+    // Session state
     let currentSession = null;
-    let hitTestSource = null;
-    let localSpace = null;
+    let hitTestSource  = null;
+    let localSpace     = null;
 
-    // Model loading
+    // Catalog & models
     const loader = new GLTFLoader();
-    const catalog = [];   // [{label, src}]
-    const placed = [];    // track placed objects for undo/clear
-    let selectedSrc = null;
-    let toPlace = null;   // THREE.Object3D waiting to be placed at reticle
+    const catalog = [];              // [{label, src, scale?, yOffset?}]
+    let selectedItem = null;         // currently selected catalog item
+    const placed = [];               // track placed objects
+    let toPlace = null;              // THREE.Object3D waiting to be placed at reticle
 
-    // Load catalog from your JSON
+    // Load catalog from JSON (models/models.json)
     async function loadCatalog(){
-      const res = await fetch('models/models.json', {cache:'no-store'});
-      const data = await res.json();
-      sel.innerHTML = '';
-      Object.entries(data).forEach(([group, items])=>{
-        const og = document.createElement('optgroup'); og.label = group;
-        items.forEach(({label, src})=>{
-          catalog.push({label, src});
-          const opt = document.createElement('option');
-          opt.textContent = label; opt.value = src;
-          og.appendChild(opt);
+      try {
+        const res = await fetch('models/models.json', {cache:'no-store'});
+        if (!res.ok) throw new Error('models.json not found');
+        const data = await res.json();
+        sel.innerHTML = '';
+        Object.entries(data).forEach(([group, items])=>{
+          const og = document.createElement('optgroup'); og.label = group;
+          items.forEach(item=>{
+            catalog.push(item);
+            const opt = document.createElement('option');
+            opt.value = item.src; opt.textContent = item.label;
+            og.appendChild(opt);
+          });
+          sel.appendChild(og);
         });
-        sel.appendChild(og);
-      });
-      selectedSrc = catalog[0]?.src ?? null;
-      if (selectedSrc) sel.value = selectedSrc;
+        if (catalog.length){
+          selectedItem = catalog[0];
+          sel.value = selectedItem.src;
+        } else {
+          sel.innerHTML = '<option>No models in catalog</option>';
+        }
+      } catch (e) {
+        sel.innerHTML = '<option>Failed to load catalog</option>';
+        toast('Could not load models/models.json');
+      }
     }
 
-    sel.addEventListener('change', ()=> { selectedSrc = sel.value; });
+    sel.addEventListener('change', ()=>{
+      selectedItem = catalog.find(x => x.src === sel.value);
+    });
 
     // Queue a model to place
     addBtn.addEventListener('click', async ()=>{
-      if (!selectedSrc) return;
+      if (!selectedItem) return;
       try {
-        const gltf = await loader.loadAsync(selectedSrc);
-        // Wrap into a group so we can duplicate easily
+        const gltf = await loader.loadAsync(selectedItem.src);
         const group = new THREE.Group();
         group.add(gltf.scene);
-        // Normalize scale a bit if models are huge (optional gentle clamp)
+
+        // Gentle normalization for huge models
         const box = new THREE.Box3().setFromObject(group);
         const size = new THREE.Vector3(); box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z);
         if (maxDim > 5) group.scale.setScalar(5 / maxDim);
 
-        toPlace = group;   // wait for a hit to place
-        hint.style.display = 'block';
+        // Optional per-model scale/yOffset from JSON
+        if (selectedItem.scale && Number.isFinite(selectedItem.scale)) {
+          group.scale.multiplyScalar(selectedItem.scale);
+        }
+        group.userData.yOffset = Number.isFinite(selectedItem.yOffset) ? selectedItem.yOffset : 0;
+
+        toPlace = group;
+        toast('Move phone to scan, then tap the floor to place');
       } catch (e) {
-        alert('Failed to load: ' + selectedSrc);
+        toast('Failed to load: ' + selectedItem.src);
       }
     });
 
     // Undo / Clear
+    function disposeObj(obj){
+      obj.traverse(o=>{
+        if (o.geometry) o.geometry.dispose();
+        if (o.material){
+          if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose());
+          else o.material.dispose();
+        }
+      });
+    }
     undoBtn.addEventListener('click', ()=>{
       const last = placed.pop();
-      if (last) { scene.remove(last); last.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) Array.isArray(o.material)?o.material.forEach(m=>m.dispose()):o.material.dispose(); }); }
+      if (last){ scene.remove(last); disposeObj(last); }
     });
     clearBtn.addEventListener('click', ()=>{
-      while (placed.length){
-        const obj = placed.pop();
-        scene.remove(obj);
-        obj.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) Array.isArray(o.material)?o.material.forEach(m=>m.dispose()):o.material.dispose(); });
-      }
+      while (placed.length){ const o = placed.pop(); scene.remove(o); disposeObj(o); }
     });
 
-    // Enter AR (WebXR)
+    // Robust AR support checks
+    async function checkARSupport(){
+      if (!window.isSecureContext){
+        enterAR.disabled = true;
+        enterAR.textContent = 'Enter AR (HTTPS required)';
+        toast('Open over HTTPS (GitHub Pages is HTTPS)');
+        return false;
+      }
+      if (!('xr' in navigator)){
+        enterAR.disabled = true;
+        enterAR.textContent = 'Enter AR (WebXR not available)';
+        toast('Use Android + Chrome with ARCore installed');
+        return false;
+      }
+      const ok = await navigator.xr.isSessionSupported?.('immersive-ar');
+      if (!ok){
+        enterAR.disabled = true;
+        enterAR.textContent = 'Enter AR (not supported)';
+        toast('Device/browser does not support AR. Update Chrome + ARCore.');
+        return false;
+      }
+      enterAR.disabled = false;
+      enterAR.textContent = 'Enter AR';
+      return true;
+    }
+
+    // Enter AR
     enterAR.addEventListener('click', async ()=>{
       try {
-        const btn = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: { root: document.body }});
-        // Replace default button behavior; we’ll call requestSession ourselves:
+        const supported = await checkARSupport();
+        if (!supported) return;
+
+        // Create hidden ARButton to ensure XR setup (kept hidden)
+        const btn = ARButton.createButton(renderer, {
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['dom-overlay'],
+          domOverlay: { root: document.body }
+        });
         btn.style.display = 'none';
 
-        const sessionInit = { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: {root: document.body} };
+        const sessionInit = {
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['dom-overlay'],
+          domOverlay: {root: document.body}
+        };
         currentSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+
         renderer.xr.setReferenceSpaceType('local');
         await renderer.xr.setSession(currentSession);
 
-        const refSpace = await currentSession.requestReferenceSpace('viewer');
-        hitTestSource = await currentSession.requestHitTestSource({ space: refSpace });
+        const viewerSpace = await currentSession.requestReferenceSpace('viewer');
+        hitTestSource = await currentSession.requestHitTestSource({ space: viewerSpace });
         localSpace = await currentSession.requestReferenceSpace('local');
 
-        hint.style.display = 'block';
+        toast('Move phone to scan; tap to place');
 
-        // Tap to place
-        renderer.domElement.addEventListener('touchend', (e)=>{
-          if (!reticle.visible || !toPlace) return;
-          // Clone so you can keep adding the same model
-          const clone = toPlace.clone(true);
-          clone.position.copy(reticle.position);
-          clone.quaternion.copy(reticle.quaternion);
-          scene.add(clone);
-          placed.push(clone);
-          // keep toPlace so you can place multiple times; comment next line if you want one-time
-          // toPlace = null;
-        });
+        renderer.domElement.addEventListener('touchend', onTouchPlace);
 
         currentSession.addEventListener('end', ()=>{
           currentSession = null; hitTestSource = null; localSpace = null;
           reticle.visible = false; hint.style.display = 'none';
+          renderer.domElement.removeEventListener('touchend', onTouchPlace);
         });
 
       } catch (e) {
-        alert('WebXR AR not available in this browser/device.\nUse Android + Chrome over HTTPS.');
+        // Common reasons: camera blocked, ARCore missing/outdated
+        toast('AR failed to start: ' + (e?.message || e));
       }
     });
 
-    // Render loop with hit-test
-    renderer.setAnimationLoop((timestamp, frame)=>{
+    // Tap to place
+    function onTouchPlace(){
+      if (!reticle.visible || !toPlace) return;
+      const clone = toPlace.clone(true);
+      clone.position.copy(reticle.position);
+      clone.quaternion.copy(reticle.quaternion);
+      clone.position.y += (clone.userData?.yOffset || 0);
+      scene.add(clone);
+      placed.push(clone);
+      // Keep toPlace for multiple placements; set to null if you want one-time placement:
+      // toPlace = null;
+    }
+
+    // Animation loop + hit test
+    renderer.setAnimationLoop((t, frame)=>{
       if (frame && hitTestSource && localSpace){
-        const hitTestResults = frame.getHitTestResults(hitTestSource);
-        if (hitTestResults.length){
-          const pose = hitTestResults[0].getPose(localSpace);
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length){
+          const pose = hits[0].getPose(localSpace);
           reticle.visible = true;
           reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-          // align flat on surface
-          const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(pose.transform.matrix));
-          reticle.quaternion.copy(q);
+          const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
+          reticle.quaternion.setFromRotationMatrix(m);
         } else {
           reticle.visible = false;
         }
@@ -208,8 +281,9 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Kick off
-    loadCatalog();
+    // Init
+    await loadCatalog();
+    await checkARSupport(); // set initial button state & helpful text
   </script>
 </body>
 </html>
