@@ -12,30 +12,18 @@
       --bg:#ffffffee;
     }
     html,body{height:100%;margin:0;font-family:system-ui,Arial}
-    /* Scrollable header ribbon */
+    /* Compact header with dropdown */
     header{
       position:fixed; top:0; left:0; right:0; z-index:20;
-      display:flex; gap:8px; align-items:center;
-      padding:10px;
-      border-bottom:1px solid var(--border);
-      background:var(--bg);
-      overflow-x:auto; overscroll-behavior-x:contain;
-      -webkit-overflow-scrolling:touch; scroll-snap-type:x proximity;
-      scrollbar-width:none;
+      display:flex; gap:10px; align-items:center; justify-content:center;
+      padding:10px; background:var(--bg); border-bottom:1px solid var(--border);
     }
-    header::-webkit-scrollbar{display:none} /* hide scrollbar (WebKit) */
-
-    .btn{
-      flex:0 0 auto; scroll-snap-align:center;
-      padding:10px 14px; border:1px solid var(--border);
-      border-radius:999px; background:#f7f7f7; cursor:pointer;
-      white-space:nowrap; font-size:14px; line-height:1;
-      transition:transform .08s ease, background .15s ease, color .15s ease, border .15s ease;
+    label{font-size:14px}
+    select{
+      font-size:14px; padding:8px 10px; border:1px solid var(--border);
+      border-radius:8px; background:#fff; min-width:220px;
     }
-    .btn:active{transform:scale(.98)}
-    .btn.active{background:var(--accent); color:#fff; border-color:var(--accent)}
-
-    .spacer{height:60px}
+    .spacer{height:58px}
     model-viewer{width:100%;height:100%}
 
     /* Hide default CTA; we use our own */
@@ -60,14 +48,20 @@
   </style>
 </head>
 <body>
-  <!-- HORIZONTALLY SCROLLABLE RIBBON -->
-  <header id="ribbon">
-    <button class="btn active" data-model="models/podium.glb">Podium</button>
-    <button class="btn" data-model="models/concert-stage.glb">Concert Stage</button>
-    <button class="btn" data-model="models/chair.glb">Chair</button>
-    <button class="btn" data-model="models/couch.glb">Couch</button>
-    <button class="btn" data-model="models/chaisehighpoly.glb">Chaise (High Poly)</button>
-    <!-- Add more by duplicating the line above -->
+  <!-- DROPDOWN HEADER -->
+  <header>
+    <label for="modelSelect">Choose model:</label>
+    <select id="modelSelect">
+      <optgroup label="Stages & Podiums">
+        <option value="models/podium.glb" selected>Podium</option>
+        <option value="models/concert-stage.glb">Concert Stage</option>
+      </optgroup>
+      <optgroup label="Seating & Furniture">
+        <option value="models/chair.glb">Chair</option>
+        <option value="models/couch.glb">Couch</option>
+        <option value="models/chaisehighpoly.glb">Chaise (High Poly)</option>
+      </optgroup>
+    </select>
   </header>
   <div class="spacer"></div>
 
@@ -88,32 +82,13 @@
 
   <script>
     const viewer = document.getElementById('viewer');
+    const select = document.getElementById('modelSelect');
     const toast  = document.getElementById('toast');
-    const ribbon = document.getElementById('ribbon');
     const arFab  = document.getElementById('arFab');
 
-    // Model switcher + active state
-    ribbon.querySelectorAll('.btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        viewer.src = btn.getAttribute('data-model');
-        ribbon.querySelectorAll('.btn').forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
-        // Keep the active one centered-ish
-        btn.scrollIntoView({inline:'center', behavior:'smooth', block:'nearest'});
-      });
-    });
-
-    // Inertial wheel scroll on desktop (drag-like feel)
-    let isDown=false, startX, scrollLeft;
-    ribbon.addEventListener('mousedown', e=>{ isDown=true; ribbon.classList.add('grabbing'); startX=e.pageX - ribbon.offsetLeft; scrollLeft=ribbon.scrollLeft; });
-    ribbon.addEventListener('mouseleave', ()=>{ isDown=false; ribbon.classList.remove('grabbing'); });
-    ribbon.addEventListener('mouseup', ()=>{ isDown=false; ribbon.classList.remove('grabbing'); });
-    ribbon.addEventListener('mousemove', e=>{
-      if(!isDown) return;
-      e.preventDefault();
-      const x = e.pageX - ribbon.offsetLeft;
-      const walk = (x - startX) * 1.2;
-      ribbon.scrollLeft = scrollLeft - walk;
+    // Switch models via dropdown
+    select.addEventListener('change', ()=>{
+      viewer.src = select.value;
     });
 
     function say(msg){
@@ -131,7 +106,7 @@
     }
     arFab.addEventListener('click', tryAR);
 
-    // Double-tap to open AR
+    // Double-tap (mobile) or double-click (desktop) to open AR
     let lastTap = 0;
     viewer.addEventListener('touchend', () => {
       const now = Date.now();
@@ -140,6 +115,7 @@
     });
     viewer.addEventListener('dblclick', tryAR);
 
+    // Error display (e.g., wrong path / missing file)
     viewer.addEventListener('error', ()=>{
       say("Couldn't load " + viewer.src);
     });
