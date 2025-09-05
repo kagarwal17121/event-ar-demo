@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AR Test – Podium</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    html,body{height:100%;margin:0}
+    model-viewer{width:100%;height:100%}
+    .cta{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);
+         padding:10px 16px;border:0;border-radius:10px;background:#0a7cff;color:#fff}
+    .err{position:fixed;left:10px;bottom:10px;background:#ffecec;color:#900;
+         padding:8px 12px;border:1px solid #f1c7c7;border-radius:6px;display:none}
+  </style>
+</head>
+<body>
+  <model-viewer id="mv"
+    src="models/podium.glb"
+    ar ar-modes="webxr scene-viewer quick-look"
+    ar-placement="floor" ar-scale="auto"
+    camera-controls auto-rotate
+    shadow-intensity="1" exposure="1">
+    <button slot="ar-button" class="cta">👀 View in your space</button>
+  </model-viewer>
+  <div id="err" class="err"></div>
+  <script>
+    mv.addEventListener('error', () => {
+      const e = document.getElementById('err');
+      e.textContent = "Couldn’t load models/podium.glb. Check the file name, folder, and size (<20–30 MB).";
+      e.style.display = 'block';
+    });
+  </script>
+</body>
+</html>
