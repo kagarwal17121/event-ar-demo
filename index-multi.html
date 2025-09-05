@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Event AR — Multi-Object (Android/Chrome)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{ --accent:#0a7cff; --bg:#ffffffee; --border:#e9e9e9; }
+    html,body{margin:0;height:100%;font-family:system-ui,Arial;background:#000}
+    /* Top bar: catalog + actions (outside AR) */
+    .ui {
+      position:fixed; left:0; right:0; top:0; z-index:10;
+      display:flex; gap:8px; align-items:center; justify-content:center;
+      padding:10px; background:var(--bg); border-bottom:1px solid var(--border);
+    }
+    label{font-size:14px}
+    select{ padding:8px 10px; border:1px solid var(--border); border-radius:8px; min-width:240px; }
+    .btn {
+      padding:10px 14px; border:1px solid var(--border);
+      border-radius:10px; background:#f7f7f7; cursor:pointer;
+    }
+    .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .hint {
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:12px; color:#fff; background:rgba(0,0,0,.55);
+      padding:6px 10px; border-radius:8px; font-size:12px; display:none; z-index:9;
+    }
+    /* Canvas behind UI */
+    canvas { display:block; width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <label for="modelSelect">Model:</label>
+    <select id="modelSelect"><option>Loading…</option></select>
+    <button id="addBtn"   class="btn primary">Add to scene</button>
+    <button id="undoBtn"  class="btn">Undo last</button>
+    <button id="clearBtn" class="btn">Clear all</button>
+    <button id="enterAR"  class="btn">Enter AR</button>
+  </div>
+  <div id="hint" class="hint">Move your phone to scan; tap the floor to place</div>
+
+  <!-- Three.js WebXR AR (Android/Chrome) -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+    import { ARButton } from 'https://unpkg.com/three@0.152.2/examples/jsm/webxr/ARButton.js';
+
+    // DOM
+    const sel   = document.getElementById('modelSelect');
+    const addBtn= document.getElementById('addBtn');
+    const undoBtn=document.getElementById('undoBtn');
+    const clearBtn=document.getElementById('clearBtn');
+    const enterAR= document.getElementById('enterAR');
+    const hint  = document.getElementById('hint');
+
+    // Three basics
+    const scene = new THREE.Scene();
+    const camera= new THREE.PerspectiveCamera();
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Light & ground shadow (simple)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.1);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(1, 3, 2);
+    scene.add(dir);
+
+    // Reticle for hit-test
+    const reticleGeo = new THREE.RingGeometry(0.13, 0.15, 32).rotateX(-Math.PI/2);
+    const reticleMat = new THREE.MeshBasicMaterial({ color: 0x00b2ff });
+    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+    reticle.visible = false;
+    scene.add(reticle);
+
+    // Session + hit test state
+    let currentSession = null;
+    let hitTestSource = null;
+    let localSpace = null;
+
+    // Model loading
+    const loader = new GLTFLoader();
+    const catalog = [];   // [{label, src}]
+    const placed = [];    // track placed objects for undo/clear
+    let selectedSrc = null;
+    let toPlace = null;   // THREE.Object3D waiting to be placed at reticle
+
+    // Load catalog from your JSON
+    async function loadCatalog(){
+      const res = await fetch('models/models.json', {cache:'no-store'});
+      const data = await res.json();
+      sel.innerHTML = '';
+      Object.entries(data).forEach(([group, items])=>{
+        const og = document.createElement('optgroup'); og.label = group;
+        items.forEach(({label, src})=>{
+          catalog.push({label, src});
+          const opt = document.createElement('option');
+          opt.textContent = label; opt.value = src;
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
+      });
+      selectedSrc = catalog[0]?.src ?? null;
+      if (selectedSrc) sel.value = selectedSrc;
+    }
+
+    sel.addEventListener('change', ()=> { selectedSrc = sel.value; });
+
+    // Queue a model to place
+    addBtn.addEventListener('click', async ()=>{
+      if (!selectedSrc) return;
+      try {
+        const gltf = await loader.loadAsync(selectedSrc);
+        // Wrap into a group so we can duplicate easily
+        const group = new THREE.Group();
+        group.add(gltf.scene);
+        // Normalize scale a bit if models are huge (optional gentle clamp)
+        const box = new THREE.Box3().setFromObject(group);
+        const size = new THREE.Vector3(); box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim > 5) group.scale.setScalar(5 / maxDim);
+
+        toPlace = group;   // wait for a hit to place
+        hint.style.display = 'block';
+      } catch (e) {
+        alert('Failed to load: ' + selectedSrc);
+      }
+    });
+
+    // Undo / Clear
+    undoBtn.addEventListener('click', ()=>{
+      const last = placed.pop();
+      if (last) { scene.remove(last); last.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) Array.isArray(o.material)?o.material.forEach(m=>m.dispose()):o.material.dispose(); }); }
+    });
+    clearBtn.addEventListener('click', ()=>{
+      while (placed.length){
+        const obj = placed.pop();
+        scene.remove(obj);
+        obj.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) Array.isArray(o.material)?o.material.forEach(m=>m.dispose()):o.material.dispose(); });
+      }
+    });
+
+    // Enter AR (WebXR)
+    enterAR.addEventListener('click', async ()=>{
+      try {
+        const btn = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: { root: document.body }});
+        // Replace default button behavior; we’ll call requestSession ourselves:
+        btn.style.display = 'none';
+
+        const sessionInit = { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: {root: document.body} };
+        currentSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+        renderer.xr.setReferenceSpaceType('local');
+        await renderer.xr.setSession(currentSession);
+
+        const refSpace = await currentSession.requestReferenceSpace('viewer');
+        hitTestSource = await currentSession.requestHitTestSource({ space: refSpace });
+        localSpace = await currentSession.requestReferenceSpace('local');
+
+        hint.style.display = 'block';
+
+        // Tap to place
+        renderer.domElement.addEventListener('touchend', (e)=>{
+          if (!reticle.visible || !toPlace) return;
+          // Clone so you can keep adding the same model
+          const clone = toPlace.clone(true);
+          clone.position.copy(reticle.position);
+          clone.quaternion.copy(reticle.quaternion);
+          scene.add(clone);
+          placed.push(clone);
+          // keep toPlace so you can place multiple times; comment next line if you want one-time
+          // toPlace = null;
+        });
+
+        currentSession.addEventListener('end', ()=>{
+          currentSession = null; hitTestSource = null; localSpace = null;
+          reticle.visible = false; hint.style.display = 'none';
+        });
+
+      } catch (e) {
+        alert('WebXR AR not available in this browser/device.\nUse Android + Chrome over HTTPS.');
+      }
+    });
+
+    // Render loop with hit-test
+    renderer.setAnimationLoop((timestamp, frame)=>{
+      if (frame && hitTestSource && localSpace){
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        if (hitTestResults.length){
+          const pose = hitTestResults[0].getPose(localSpace);
+          reticle.visible = true;
+          reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+          // align flat on surface
+          const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(pose.transform.matrix));
+          reticle.quaternion.copy(q);
+        } else {
+          reticle.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
+    });
+
+    // Resize
+    window.addEventListener('resize', ()=>{
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Kick off
+    loadCatalog();
+  </script>
+</body>
+</html>
