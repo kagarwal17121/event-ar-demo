@@ -7,13 +7,22 @@
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <style>
     html,body{height:100%;margin:0;font-family:system-ui,Arial}
-    header{position:fixed;top:0;left:0;right:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;padding:10px;background:#ffffffee;border-bottom:1px solid #eee;z-index:10}
+    header{position:fixed;top:0;left:0;right:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;padding:10px;background:#ffffffee;border-bottom:1px solid #eee;z-index:20}
     .btn{padding:8px 12px;border:1px solid #ddd;border-radius:10px;background:#f7f7f7;cursor:pointer}
     .btn:active{transform:scale(.98)}
     .spacer{height:58px}
     model-viewer{width:100%;height:100%}
-    .cta{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);padding:10px 16px;border:0;border-radius:10px;background:#0a7cff;color:#fff}
-    .err{position:fixed;left:10px;bottom:10px;background:#ffecec;color:#900;padding:8px 12px;border:1px solid #f1c7c7;border-radius:6px;display:none;max-width:80%}
+    /* Hide the default bottom CTA */
+    .mv-cta{display:none}
+    /* Your custom AR button (top, under header) */
+    .ar-fab{
+      position:fixed; top:64px; right:12px; z-index:15;
+      display:flex; align-items:center; gap:8px;
+      padding:10px 14px; border:0; border-radius:999px;
+      background:#0a7cff; color:#fff; box-shadow:0 6px 20px rgba(0,0,0,.18);
+    }
+    .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+      background:#ffecec;color:#900;padding:8px 12px;border:1px solid #f1c7c7;border-radius:6px;display:none;z-index:30}
   </style>
 </head>
 <body>
@@ -23,32 +32,66 @@
   </header>
   <div class="spacer"></div>
 
+  <!-- the viewer -->
   <model-viewer id="viewer"
     src="models/podium.glb"
     ar ar-modes="webxr scene-viewer quick-look"
     ar-placement="floor" ar-scale="auto"
     camera-controls auto-rotate
     shadow-intensity="1" exposure="1">
-    <button slot="ar-button" class="cta">👀 View in your space</button>
+    <!-- hide this default CTA via CSS (class mv-cta) -->
+    <button slot="ar-button" class="mv-cta">View in your space</button>
   </model-viewer>
 
-  <div id="err" class="err"></div>
+  <!-- your custom camera button (top-right) -->
+  <button id="arFab" class="ar-fab">📷 AR</button>
+
+  <div id="toast" class="toast"></div>
 
   <script>
     const viewer = document.getElementById('viewer');
-    const errBox = document.getElementById('err');
+    const toast  = document.getElementById('toast');
+    const arFab  = document.getElementById('arFab');
 
+    // Swap models
     document.querySelectorAll('button[data-model]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        errBox.style.display = 'none';
         viewer.src = btn.getAttribute('data-model');
-        // If you later add iPhone USDZ: viewer.setAttribute('ios-src', viewer.src.replace('.glb','.usdz'));
       });
     });
 
+    // Helper: show small message
+    function say(msg){
+      toast.textContent = msg; toast.style.display='block';
+      setTimeout(()=> toast.style.display='none', 2200);
+    }
+
+    // Launch AR from the top button
+    async function tryAR(){
+      // canActivateAR is supported by model-viewer
+      if (viewer.canActivateAR) {
+        try { await viewer.activateAR(); }
+        catch(e){ say('AR blocked by browser. Try tapping again.'); }
+      } else {
+        say('AR not supported on this device/browser.');
+      }
+    }
+    arFab.addEventListener('click', tryAR);
+
+    // Also allow double-tap anywhere on the model to enter AR
+    // (mobile-friendly double-tap detector)
+    let lastTap = 0;
+    viewer.addEventListener('touchend', () => {
+      const now = Date.now();
+      if (now - lastTap < 350) { tryAR(); } // double-tap within 350ms
+      lastTap = now;
+    });
+    // Desktop double-click
+    viewer.addEventListener('dblclick', tryAR);
+
+    // Debug errors
     viewer.addEventListener('error', ()=>{
-      errBox.textContent = "Couldn't load " + viewer.src + ". Check the file path/name and size (<20–30 MB).";
-      errBox.style.display = 'block';
+      say("Couldn't load " + viewer.src);
     });
   </script>
 </body>
