@@ -1,11 +1,11 @@
 {
   "Stages & Podiums": [
-    { "label": "Podium",        "src": "models/podium.glb" },
-    { "label": "Concert Stage", "src": "models/concert-stage.glb" }
+    { "label": "Podium", "src": "models/podium.glb", "scale": 0.9 },
+    { "label": "Concert Stage", "src": "models/concert-stage.glb", "scale": 0.6 }
   ],
   "Seating & Furniture": [
-    { "label": "Chair",            "src": "models/chair.glb" },
-    { "label": "Couch",            "src": "models/couch.glb" },
-    { "label": "Chaise (High Poly)","src": "models/chaisehighpoly.glb" }
+    { "label": "Chair",  "src": "models/chair.glb",  "scale": 1.2, "yOffset": 0.0 },
+    { "label": "Couch",  "src": "models/couch.glb",  "scale": 1.0 },
+    { "label": "Chaise (High Poly)", "src": "models/chaisehighpoly.glb", "scale": 0.8 }
   ]
 }
