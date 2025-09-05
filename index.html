@@ -2,17 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Event AR – Models</title>
+  <title>Event AR – Catalog</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <style>
-    :root{
-      --accent:#0a7cff;
-      --border:#e9e9e9;
-      --bg:#ffffffee;
-    }
+    :root{ --accent:#0a7cff; --border:#e9e9e9; --bg:#ffffffee; }
     html,body{height:100%;margin:0;font-family:system-ui,Arial}
-    /* Compact header with dropdown */
+
+    /* Header with dropdown */
     header{
       position:fixed; top:0; left:0; right:0; z-index:20;
       display:flex; gap:10px; align-items:center; justify-content:center;
@@ -21,12 +18,13 @@
     label{font-size:14px}
     select{
       font-size:14px; padding:8px 10px; border:1px solid var(--border);
-      border-radius:8px; background:#fff; min-width:220px;
+      border-radius:8px; background:#fff; min-width:240px;
     }
+
     .spacer{height:58px}
     model-viewer{width:100%;height:100%}
 
-    /* Hide default CTA; we use our own */
+    /* Hide default CTA; use custom */
     .mv-cta{display:none}
 
     /* Big custom AR button */
@@ -48,26 +46,14 @@
   </style>
 </head>
 <body>
-  <!-- DROPDOWN HEADER -->
   <header>
     <label for="modelSelect">Choose model:</label>
-    <select id="modelSelect">
-      <optgroup label="Stages & Podiums">
-        <option value="models/podium.glb" selected>Podium</option>
-        <option value="models/concert-stage.glb">Concert Stage</option>
-      </optgroup>
-      <optgroup label="Seating & Furniture">
-        <option value="models/chair.glb">Chair</option>
-        <option value="models/couch.glb">Couch</option>
-        <option value="models/chaisehighpoly.glb">Chaise (High Poly)</option>
-      </optgroup>
-    </select>
+    <select id="modelSelect"><option>Loading…</option></select>
   </header>
   <div class="spacer"></div>
 
-  <!-- VIEWER -->
   <model-viewer id="viewer"
-    src="models/podium.glb"
+    src=""
     ar ar-modes="webxr scene-viewer quick-look"
     ar-placement="floor" ar-scale="auto"
     camera-controls auto-rotate
@@ -75,9 +61,7 @@
     <button slot="ar-button" class="mv-cta">View in your space</button>
   </model-viewer>
 
-  <!-- BIG AR BUTTON -->
   <button id="arFab" class="ar-fab">📷 AR</button>
-
   <div id="toast" class="toast"></div>
 
   <script>
@@ -86,16 +70,51 @@
     const toast  = document.getElementById('toast');
     const arFab  = document.getElementById('arFab');
 
-    // Switch models via dropdown
-    select.addEventListener('change', ()=>{
+    function say(msg){
+      toast.textContent = msg; toast.style.display='block';
+      setTimeout(()=> toast.style.display='none', 2400);
+    }
+
+    async function loadCatalog(){
+      try{
+        const res = await fetch('models/models.json', { cache:'no-store' });
+        if(!res.ok) throw new Error('models.json not found');
+        const catalog = await res.json();
+
+        // Build dropdown
+        select.innerHTML = '';
+        let firstSrc = null;
+        Object.entries(catalog).forEach(([group, items])=>{
+          const og = document.createElement('optgroup');
+          og.label = group;
+          items.forEach(({label, src})=>{
+            const opt = document.createElement('option');
+            opt.value = src; opt.textContent = label;
+            og.appendChild(opt);
+            if(!firstSrc) firstSrc = src;
+          });
+          select.appendChild(og);
+        });
+
+        // Default to first entry
+        if(firstSrc){
+          select.value = firstSrc;
+          viewer.src = firstSrc;
+        }else{
+          select.innerHTML = '<option>No models in catalog</option>';
+        }
+      }catch(e){
+        select.innerHTML = '<option>Failed to load catalog</option>';
+        say('Could not load models/models.json.');
+      }
+    }
+
+    // Swap models from dropdown
+    select.addEventListener('change', ()=> {
       viewer.src = select.value;
     });
 
-    function say(msg){
-      toast.textContent = msg; toast.style.display='block';
-      setTimeout(()=> toast.style.display='none', 2200);
-    }
-
+    // Custom AR trigger
     async function tryAR(){
       if (viewer.canActivateAR) {
         try { await viewer.activateAR(); }
@@ -106,7 +125,7 @@
     }
     arFab.addEventListener('click', tryAR);
 
-    // Double-tap (mobile) or double-click (desktop) to open AR
+    // Double-tap or double-click to open AR
     let lastTap = 0;
     viewer.addEventListener('touchend', () => {
       const now = Date.now();
@@ -115,10 +134,12 @@
     });
     viewer.addEventListener('dblclick', tryAR);
 
-    // Error display (e.g., wrong path / missing file)
+    // Show load errors (bad path / missing file / big file)
     viewer.addEventListener('error', ()=>{
       say("Couldn't load " + viewer.src);
     });
+
+    loadCatalog();
   </script>
 </body>
 </html>
