@@ -1,0 +1,11 @@
+{
+  "Stages & Podiums": [
+    { "label": "Podium",        "src": "models/podium.glb" },
+    { "label": "Concert Stage", "src": "models/concert-stage.glb" }
+  ],
+  "Seating & Furniture": [
+    { "label": "Chair",            "src": "models/chair.glb" },
+    { "label": "Couch",            "src": "models/couch.glb" },
+    { "label": "Chaise (High Poly)","src": "models/chaisehighpoly.glb" }
+  ]
+}
