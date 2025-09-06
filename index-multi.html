@@ -88,23 +88,37 @@ gltfLoader.setDRACOLoader(draco);
 
 const cache = new Map(); // url -> GLTF scene (clonable)
 
-/* ---------- Catalog ---------- */
-let catalog = [];
-async function loadCatalog() {
-  const url = './models/models.json?v=3';
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`models.json HTTP ${res.status}`);
-  catalog = await res.json();
+<!-- ---------- Catalog (inline, no fetch) ---------- -->
+<script type="module">
+/* Put this right after the other <script type="module"> content,
+   or merge into it. If merging, remove the old loadCatalog() and
+   its call. */
+
+const CATALOG = [
+  { name: "Podium",         url: "./models/podium.glb" },
+  { name: "Concert Stage",  url: "./models/concert-stage.glb" },
+  { name: "Chair",          url: "./models/chair.glb" },
+  { name: "Couch",          url: "./models/couch.glb" },
+  { name: "Chaise",         url: "./models/chaisehighpoly.glb" }
+];
+
+// wire up the existing DOM + log() from the main script
+const sel = document.querySelector('#modelSel');
+const log = (m)=>{ const t=new Date().toTimeString().slice(0,8); document.querySelector('#log').textContent=`${t} — ${m}`; };
+
+function populateCatalog(list) {
   sel.innerHTML = '';
-  for (const item of catalog) {
+  for (const item of list) {
     const opt = document.createElement('option');
     opt.value = item.url;
     opt.textContent = item.name;
     sel.appendChild(opt);
   }
-  log(`Catalog loaded (${catalog.length} items)`);
+  log(`Catalog loaded (${list.length} items)`);
 }
-loadCatalog().catch(e => log(`catalog error: ${e.message}`));
+
+populateCatalog(CATALOG);
+</script>
 
 /* ---------- Helpers ---------- */
 function loadModel(url) {
