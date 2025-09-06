@@ -1,36 +1,40 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Place 3D on Image</title>
 
 <style>
   :root { color-scheme: dark; }
-  html,body { margin:0; height:100%; background:#0b0b0f; color:#e8eaf0; font:15px system-ui, -apple-system, Segoe UI, Roboto; }
-  #topbar { position:sticky; top:0; z-index:5; background:#10131a; border-bottom:1px solid #222834; padding:10px; display:grid; gap:8px;
-            grid-template-columns: 1fr 1fr auto auto auto auto; align-items:center; }
-  #step1, #step2 { display:flex; gap:8px; align-items:center; }
-  label.step { font-weight:600; color:#9fb1ff; margin-right:6px; }
-  input[type="file"], select, button, input[type="range"] { height:40px; border-radius:10px; background:#141821; color:#fff; border:1px solid #2a2f3b; padding:0 10px; }
-  button.primary { background:#2563ff; border-color:#2563ff; }
-  button.ghost   { background:#141821; }
-  button:disabled { opacity:.5; }
-  #status { grid-column: 1 / -1; font-size:12px; color:#a2a8b4; margin-top:2px; }
-  #canvasWrap { position:relative; width:100%; height:calc(100vh - 92px); display:flex; align-items:center; justify-content:center; background:#0b0b0f;}
+  html,body { margin:0; height:100%; background:#0b0b0f; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
+  #app { display:flex; flex-direction:column; height:100%; }
+
+  /* Status bar */
+  #statusBar { background:#10131a; padding:8px 12px; font-size:14px; color:#9fb1ff; border-bottom:1px solid #1c202a; }
+
+  /* Controls */
+  #controls { background:#141821; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  #controls label { font-size:14px; color:#9fb1ff; }
+  #controls select, #controls input[type=file], #controls button, #controls input[type=range] {
+    width:100%; height:44px; font-size:15px; border-radius:8px; border:none;
+  }
+  #controls select, #controls input[type=file] { background:#1d2230; color:#fff; }
+  #controls button { background:#2563ff; color:#fff; font-weight:600; }
+  #controls button.secondary { background:#2a2f3b; color:#fff; }
+  #controls .row { display:flex; gap:8px; }
+  #controls .row button { flex:1; }
+
+  /* Stage */
+  #stage { flex:1; position:relative; background:#000; display:flex; align-items:center; justify-content:center; }
   #bg { max-width:100%; max-height:100%; object-fit:contain; display:none; }
-  #stage { position:absolute; inset:0; }
-  #hint { position:absolute; bottom:14px; left:50%; transform:translateX(-50%); font-size:12px; color:#cad1db; background:rgba(0,0,0,.35); padding:6px 10px; border-radius:8px; }
-  #toolbox { position:fixed; right:10px; top:70px; display:flex; flex-direction:column; gap:8px; z-index:6; }
-  #toolbox > button, #toolbox > div { height:40px; border-radius:10px; padding:0 12px; display:flex; align-items:center; gap:6px; }
-  #toolbox .row { background:#141821; border:1px solid #2a2f3b; }
-  .pill { padding:6px 10px; border-radius:999px; border:1px solid #2a2f3b; font-size:12px; background:#121621; }
-  .on { border-color:#2f9e44; color:#b7ffbe; }
-  #scaleRow { width:240px; }
-  #scaleRow input[type="range"] { width:160px; }
+  #threeCanvas { position:absolute; top:0; left:0; width:100%; height:100%; touch-action:none; }
+
+  /* Bottom bar */
+  #bottomBar { padding:10px; background:#10131a; border-top:1px solid #1c202a; }
+  #btnSave { width:100%; height:50px; border-radius:10px; font-size:16px; font-weight:600; background:#2563ff; color:#fff; border:none; }
 </style>
 
-<!-- Import map points to your local libs -->
 <script type="importmap">
 {
   "imports": {
@@ -41,360 +45,157 @@
 </script>
 </head>
 <body>
+<div id="app">
 
-<div id="topbar">
-  <div id="step1">
-    <label class="step">1) Image</label>
-    <input id="bgFile" type="file" accept="image/*">
-    <button id="btnClearBg" class="ghost" disabled>Clear</button>
+  <!-- Status -->
+  <div id="statusBar">boot…</div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <div>
+      <label>Step 1: Pick Image</label>
+      <input id="bgFile" type="file" accept="image/*">
+    </div>
+
+    <div>
+      <label>Step 2: Pick Model</label>
+      <select id="modelSelect" disabled><option>Loading…</option></select>
+      <button id="btnAdd" disabled>➕ Add Model</button>
+    </div>
+
+    <div class="row">
+      <button id="btnDelete" class="secondary" disabled>🗑 Delete</button>
+      <button id="btnClear" class="secondary" disabled>♻ Clear All</button>
+    </div>
+
+    <div>
+      <label>Scale</label>
+      <input id="scale" type="range" min="0.05" max="5" step="0.01" value="1">
+    </div>
+
+    <div class="row">
+      <button id="btnRotL" class="secondary">⟲ Rotate</button>
+      <button id="btnRotR" class="secondary">⟳ Rotate</button>
+    </div>
   </div>
 
-  <div id="step2">
-    <label class="step">2) Model</label>
-    <select id="modelSel" disabled><option>Load catalog…</option></select>
-    <button id="btnAdd" class="primary" disabled>+ Add</button>
+  <!-- Stage -->
+  <div id="stage">
+    <img id="bg" alt="background">
+    <canvas id="threeCanvas"></canvas>
   </div>
 
-  <button id="btnDelete"  class="ghost" title="Delete selected" disabled>🗑 Delete</button>
-  <button id="btnReset"   class="ghost" title="Remove all" disabled>♻ Clear</button>
-  <button id="btnSave"    class="ghost" title="Download PNG" disabled>⬇ Download</button>
-
-  <div id="status">boot…</div>
-</div>
-
-<div id="canvasWrap">
-  <img id="bg" alt="background" />
-  <!-- WebGL canvas will be injected here -->
-  <div id="hint">Drag model to move • pinch to scale • ⟲/⟳ to rotate</div>
-</div>
-
-<div id="toolbox">
-  <div class="pill" id="selInfo">No selection</div>
-  <div class="row" id="scaleRow" style="display:none;">
-    <span style="padding-left:10px;">Scale</span>
-    <input id="scale" type="range" min="0.05" max="5" step="0.01" value="1">
-    <span id="scaleVal">1.00×</span>
+  <!-- Bottom -->
+  <div id="bottomBar">
+    <button id="btnSave">⬇ Download PNG</button>
   </div>
-  <button id="btnRotL" class="row" title="Rotate left 5°" style="display:none;">⟲ 5°</button>
-  <button id="btnRotR" class="row" title="Rotate right 5°" style="display:none;">⟳ 5°</button>
+
 </div>
 
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const ui = {
-  bgFile:  document.getElementById('bgFile'),
-  bg:      document.getElementById('bg'),
-  clearBg: document.getElementById('btnClearBg'),
-  modelSel:document.getElementById('modelSel'),
-  add:     document.getElementById('btnAdd'),
-  del:     document.getElementById('btnDelete'),
-  reset:   document.getElementById('btnReset'),
-  save:    document.getElementById('btnSave'),
-  status:  document.getElementById('status'),
-  wrap:    document.getElementById('canvasWrap'),
-  hint:    document.getElementById('hint'),
-  selInfo: document.getElementById('selInfo'),
-  scaleRow:document.getElementById('scaleRow'),
-  scale:   document.getElementById('scale'),
-  scaleVal:document.getElementById('scaleVal'),
-  rotL:    document.getElementById('btnRotL'),
-  rotR:    document.getElementById('btnRotR'),
+  status: document.getElementById('statusBar'),
+  bgFile: document.getElementById('bgFile'),
+  bg: document.getElementById('bg'),
+  modelSel: document.getElementById('modelSelect'),
+  add: document.getElementById('btnAdd'),
+  del: document.getElementById('btnDelete'),
+  clear: document.getElementById('btnClear'),
+  save: document.getElementById('btnSave'),
+  scale: document.getElementById('scale'),
+  rotL: document.getElementById('btnRotL'),
+  rotR: document.getElementById('btnRotR'),
+  canvas: document.getElementById('threeCanvas')
 };
+function setStatus(t){ ui.status.textContent=t; }
 
-function setStatus(s){ ui.status.textContent = s; }
-function enableImageTools(on){
-  ui.modelSel.disabled = !on;
-  ui.add.disabled = !on;
-  ui.save.disabled = !on;
-  ui.clearBg.disabled = !on;
-  ui.reset.disabled = !on;
+let renderer, scene, camera, raycaster, plane, pointer=new THREE.Vector2();
+let catalog=[], placed=[], selected=null;
+
+renderer=new THREE.WebGLRenderer({canvas:ui.canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+scene=new THREE.Scene();
+camera=new THREE.OrthographicCamera(-400,400,300,-300,0.1,1000);
+camera.position.set(0,0,10);
+scene.add(new THREE.AmbientLight(0xffffff,1));
+
+plane=new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({transparent:true,opacity:0}));
+scene.add(plane);
+raycaster=new THREE.Raycaster();
+
+function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera);} animate();
+
+// Catalog
+const draco=new DRACOLoader().setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf=new GLTFLoader().setDRACOLoader(draco);
+async function loadCatalog(){
+  try{
+    const res=await fetch('./models/models.json',{cache:'no-cache'});
+    catalog=await res.json();
+    ui.modelSel.innerHTML='';
+    catalog.forEach((m,i)=>{const o=document.createElement('option');o.value=i;o.textContent=m.name;ui.modelSel.appendChild(o);});
+    ui.modelSel.disabled=false; ui.add.disabled=false;
+    setStatus('✅ Catalog loaded');
+  }catch{ setStatus('⚠ Failed to load catalog'); }
 }
-function showSelectionTools(on){
-  ui.scaleRow.style.display = on ? '' : 'none';
-  ui.rotL.style.display = on ? '' : 'none';
-  ui.rotR.style.display = on ? '' : 'none';
-}
-
-let renderer, scene, camera, raycaster, plane, pointer = new THREE.Vector2();
-let catalog = [];
-let placed = [];
-let selected = null;
-let dragging = false;
-let dragOffset = new THREE.Vector3();
-let lastPinch = 0;
-
-initThree();
 loadCatalog();
 
-function initThree(){
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(800, 600); // will be resized to image
-  renderer.domElement.id = 'stage';
-  ui.wrap.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  raycaster = new THREE.Raycaster();
-
-  // orthographic camera sized later to image pixels
-  camera = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000);
-  camera.position.set(0,0,10);
-  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-
-  plane = new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0 }));
-  scene.add(plane);
-
-  animate();
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
-
-async function loadCatalog(){
-  setStatus('loading catalog…');
-  try{
-    const res = await fetch('./models/models.json', { cache:'no-cache' });
-    const json = await res.json();
-    catalog = Array.isArray(json)? json : (json.models||[]);
-    ui.modelSel.innerHTML = '';
-    catalog.forEach((m,i)=>{
-      const o = document.createElement('option');
-      o.value = i; o.textContent = m.name || m.url; ui.modelSel.appendChild(o);
-    });
-    setStatus(`catalog ready (${catalog.length}) — Step 1: pick an image`);
-  }catch(e){
-    setStatus('failed to load ./models/models.json');
-    ui.modelSel.innerHTML = '<option>Failed to load</option>';
-  }
-}
-
-// ---------- Step 1: background image ----------
-ui.bgFile.addEventListener('change', (e)=>{
-  const file = e.target.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  ui.bg.src = url;
-  ui.bg.onload = ()=>{
-    ui.bg.style.display = 'block';
-    resizeToImage(ui.bg.naturalWidth, ui.bg.naturalHeight);
-    enableImageTools(true);
-    setStatus('Step 2: choose a model, then click + Add');
-  };
-});
-ui.clearBg.onclick = ()=>{
-  ui.bg.removeAttribute('src'); ui.bg.style.display = 'none';
-  enableImageTools(false);
-  clearAll();
-  setStatus('Pick an image to start');
-};
-
-function resizeToImage(w,h){
-  // fit canvas to the displayed <img> size
-  // the <img> is object-fit:contain in the wrap; compute final size
-  const wrapW = ui.wrap.clientWidth, wrapH = ui.wrap.clientHeight;
-  const scale = Math.min(wrapW/w, wrapH/h);
-  const dispW = Math.round(w*scale), dispH = Math.round(h*scale);
-
-  renderer.setSize(dispW, dispH, false);
-  renderer.domElement.style.width  = dispW+'px';
-  renderer.domElement.style.height = dispH+'px';
-
-  // Ortographic camera in image pixels: origin center
-  camera.left   = -dispW/2; camera.right  = dispW/2;
-  camera.top    =  dispH/2; camera.bottom = -dispH/2;
-  camera.updateProjectionMatrix();
-
-  // plane matches image area for raycasting
-  plane.scale.set(dispW, dispH, 1);
-}
-
-// ---------- Step 2: add models ----------
-const draco = new DRACOLoader().setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-const gltf  = new GLTFLoader().setDRACOLoader(draco);
-
-ui.add.onclick = async ()=>{
-  const item = catalog[Number(ui.modelSel.value)];
-  if (!item){ alert('No model selected'); return; }
-  try{
-    setStatus('loading model…');
-    const sceneGLB = (await gltf.loadAsync(item.url)).scene;
-    sceneGLB.traverse(n=>{ if(n.isMesh){ n.castShadow=false; n.receiveShadow=false; n.frustumCulled=false; }});
-    sceneGLB.scale.setScalar(item.scale ?? 1);
-    sceneGLB.rotation.set(...(item.rotation||[0,0,0]));
-    // start at center front
-    sceneGLB.position.set(0, -renderer.getSize(new THREE.Vector2()).y/6, 0);
-    scene.add(sceneGLB);
-    placed.push(sceneGLB);
-    select(sceneGLB);
-    setStatus('Tip: drag to move • pinch to scale • use ⟲/⟳ to rotate');
-    ui.del.disabled = ui.reset.disabled = ui.save.disabled = false;
-  }catch(e){
-    setStatus('model load error: '+e.message);
-  }
-};
-
-// ---------- Selection / gestures ----------
-function select(obj){
-  if (selected === obj) return;
-  if (selected) outline(selected, false);
-  selected = obj;
-  if (selected){
-    outline(selected, true);
-    ui.selInfo.textContent = 'Selected: ' + (selected.name || 'model');
-    showSelectionTools(true);
-    ui.scale.value = selected.scale.x.toFixed(2);
-    ui.scaleVal.textContent = selected.scale.x.toFixed(2)+'×';
-    ui.del.disabled = false;
-  } else {
-    ui.selInfo.textContent = 'No selection';
-    showSelectionTools(false);
-    ui.del.disabled = true;
-  }
-}
-function outline(root, on){
-  root.traverse(o=>{
-    if (o.isMesh){
-      if (on){
-        o.userData.__origEmissive ??= (o.material.emissive ? o.material.emissive.clone() : null);
-        if (o.material.emissive) o.material.emissive.setHex(0x2b5fff);
-      } else {
-        if (o.material.emissive && o.userData.__origEmissive) o.material.emissive.copy(o.userData.__origEmissive);
-      }
-      o.material.needsUpdate = true;
-    }
-  });
-}
-
-renderer.domElement.addEventListener('pointerdown', (e)=>{
-  if (!ui.bg.src) return;
-  dragging = true;
-  setPointer(e);
-  const hit = pick(pointer);
-  if (hit){
-    select(hit.object?.userData.root || hit.object);
-    // compute offset on plane
-    const p3 = planeHit(pointer);
-    dragOffset.copy(selected.position).sub(p3);
-  } else {
-    select(null);
-  }
-  renderer.domElement.setPointerCapture(e.pointerId);
-});
-renderer.domElement.addEventListener('pointermove', (e)=>{
-  if (!dragging || !selected) return;
-  setPointer(e);
-  const p3 = planeHit(pointer);
-  if (p3){
-    selected.position.copy(p3).add(dragOffset);
-  }
-});
-renderer.domElement.addEventListener('pointerup', (e)=>{
-  dragging = false;
-  try{ renderer.domElement.releasePointerCapture(e.pointerId);}catch{}
-});
-
-// pinch scale
-renderer.domElement.addEventListener('touchstart', (e)=>{
-  if (e.touches.length===2){ lastPinch = dist2(e.touches); }
-}, {passive:true});
-renderer.domElement.addEventListener('touchmove', (e)=>{
-  if (!selected) return;
-  if (e.touches.length===2){
-    const d = dist2(e.touches);
-    const delta = (d - lastPinch)/300;
-    const s = THREE.MathUtils.clamp(selected.scale.x + delta, 0.05, 5);
-    selected.scale.setScalar(s);
-    ui.scale.value = s.toFixed(2);
-    ui.scaleVal.textContent = s.toFixed(2)+'×';
-    lastPinch = d;
-  }
-}, {passive:true});
-
-function dist2(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.hypot(dx,dy); }
-function setPointer(e){
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
-}
-function planeHit(ndc){
-  raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObject(plane, false)[0];
-  return hit ? hit.point : null;
-}
-function pick(ndc){
-  raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects(placed, true);
-  if (!hits.length) return null;
-  // mark root for selection
-  hits[0].object.userData.root = hits[0].object.parent?.parent || hits[0].object.parent || hits[0].object;
-  return hits[0];
-}
-
-// sliders & buttons
-ui.scale.addEventListener('input', ()=>{
-  if (!selected) return;
-  const s = Number(ui.scale.value);
-  selected.scale.setScalar(s);
-  ui.scaleVal.textContent = s.toFixed(2)+'×';
-});
-ui.rotL.onclick = ()=> rotateSel(-5);
-ui.rotR.onclick = ()=> rotateSel( 5);
-function rotateSel(deg){
-  if (!selected) return;
-  selected.rotation.y += THREE.MathUtils.degToRad(deg);
-}
-
-// delete / reset
-ui.del.onclick = ()=>{
-  if (!selected) return;
-  scene.remove(selected);
-  placed = placed.filter(o=>o!==selected);
-  select(null);
-};
-function clearAll(){
-  placed.forEach(o=>scene.remove(o)); placed.length=0; select(null);
-}
-ui.reset.onclick = ()=> clearAll();
-
-// ---------- Save composite ----------
-ui.save.onclick = ()=>{
-  if (!ui.bg.src){ alert('Add a background image first'); return; }
-  // draw background <img> + WebGL canvas into a single PNG
-  const cvs = document.createElement('canvas');
-  const w = renderer.domElement.width;
-  const h = renderer.domElement.height;
-  cvs.width = w; cvs.height = h;
-  const ctx = cvs.getContext('2d');
-  // draw <img> scaled to canvas size (the <img> is already fitted; use same display size)
-  // make a temp image with same displayed size
-  const tmp = new Image(); tmp.src = ui.bg.src;
-  tmp.onload = ()=>{
-    // compute fitted size like earlier
-    // but the displayed size equals canvas size now, so just drawImage to cover
-    ctx.drawImage(tmp, 0, 0, w, h);
-    ctx.drawImage(renderer.domElement, 0, 0);
-    const a = document.createElement('a');
-    a.href = cvs.toDataURL('image/png'); a.download = 'image-plus-3d.png'; a.click();
+// Background
+ui.bgFile.onchange=e=>{
+  const file=e.target.files[0]; if(!file)return;
+  const url=URL.createObjectURL(file);
+  ui.bg.src=url; ui.bg.style.display='block';
+  ui.bg.onload=()=>{
+    const w=ui.bg.naturalWidth,h=ui.bg.naturalHeight;
+    renderer.setSize(ui.stageW=w,ui.stageH=h);
+    camera.left=-w/2;camera.right=w/2;camera.top=h/2;camera.bottom=-h/2;camera.updateProjectionMatrix();
+    plane.scale.set(w,h,1);
+    setStatus('✅ Image loaded. Step 2: Add model.');
   };
 };
 
-// responsiveness (when rotating phone, etc.)
-new ResizeObserver(()=>{
-  if (!ui.bg.src) return;
-  // recompute canvas against new wrap size using the original image size
-  // create a temp image to read natural size if not available
-  if (ui.bg.naturalWidth && ui.bg.naturalHeight) {
-    resizeToImage(ui.bg.naturalWidth, ui.bg.naturalHeight);
-  }
-}).observe(ui.wrap);
+// Add model
+ui.add.onclick=async()=>{
+  const item=catalog[ui.modelSel.value]; if(!item)return;
+  setStatus('Loading '+item.name+'…');
+  const glb=await gltf.loadAsync(item.url); const obj=glb.scene;
+  obj.scale.setScalar(item.scale||1); obj.position.set(0,0,0);
+  scene.add(obj); placed.push(obj); select(obj);
+  setStatus('Tap & drag to move • pinch/slider to scale');
+};
 
-setStatus('boot… ready');
+// Selection
+function select(o){ selected=o; if(o){ui.del.disabled=false;} else {ui.del.disabled=true;} }
+renderer.domElement.addEventListener('pointerdown',e=>{
+  setPointer(e);const hit=pick(pointer); if(hit){select(hit.object.parent);} else select(null);
+});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!selected||e.buttons!==1)return; setPointer(e); const p=planeHit(pointer); if(p)selected.position.copy(p);
+});
+function setPointer(e){const r=ui.canvas.getBoundingClientRect(); pointer.x=((e.clientX-r.left)/r.width)*2-1; pointer.y=-((e.clientY-r.top)/r.height)*2+1;}
+function planeHit(ndc){raycaster.setFromCamera(ndc,camera);const h=raycaster.intersectObject(plane)[0];return h?h.point:null;}
+function pick(ndc){raycaster.setFromCamera(ndc,camera);const h=raycaster.intersectObjects(placed,true);return h?.[0]||null;}
+
+// Scale + rotate
+ui.scale.oninput=()=>{ if(selected){const s=Number(ui.scale.value); selected.scale.setScalar(s);} };
+ui.rotL.onclick=()=>{ if(selected)selected.rotation.y+=THREE.MathUtils.degToRad(-15); };
+ui.rotR.onclick=()=>{ if(selected)selected.rotation.y+=THREE.MathUtils.degToRad(15); };
+
+// Delete/Clear
+ui.del.onclick=()=>{ if(selected){scene.remove(selected); placed=placed.filter(p=>p!==selected); select(null);} };
+ui.clear.onclick=()=>{ placed.forEach(o=>scene.remove(o)); placed=[]; select(null); };
+
+// Save
+ui.save.onclick=()=>{
+  const cvs=document.createElement('canvas');cvs.width=renderer.domElement.width;cvs.height=renderer.domElement.height;
+  const ctx=cvs.getContext('2d');ctx.drawImage(ui.bg,0,0,cvs.width,cvs.height);ctx.drawImage(renderer.domElement,0,0);
+  const a=document.createElement('a');a.href=cvs.toDataURL('image/png');a.download='composite.png';a.click();
+};
 </script>
 </body>
 </html>
