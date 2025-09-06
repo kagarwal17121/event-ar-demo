@@ -1,215 +1,243 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Event AR — Multi</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; height:100%; background:#0b0b0b; color:#e8e8e8; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-  #log { position:fixed; top:0; left:0; right:0; z-index:5; background:#121212; color:#ddd; padding:6px 10px; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #hud { position:fixed; top:28px; left:0; right:0; z-index:4; background:#101010; border-bottom:1px solid #222; padding:10px; display:flex; gap:8px; align-items:center; }
-  label { color:#a8a8a8; }
-  select, button { height:40px; border-radius:10px; border:1px solid #2a2a2a; background:#1a1a1a; color:#fff; padding:0 12px; font:inherit; }
-  button.primary { background:#2563eb; border-color:#2563eb; font-weight:700; }
-  button.warn { background:#2b1a1a; border-color:#7a2b2b; }
-  #stage { position:fixed; inset:0; z-index:1; display:block; }
-  #enter { position:fixed; left:50%; transform:translateX(-50%); bottom:24px; z-index:6; }
-  #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:90px; background:rgba(0,0,0,.7); padding:10px 14px; border-radius:12px; font-size:14px; display:none; z-index:7; }
-</style>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+  />
+  <title>Event AR — Multi</title>
+  <style>
+    :root { --bg:#0b0b0c; --panel:#121316; --text:#e9ecf1; --muted:#a7b0bb; --accent:#2f6bff; }
+    html,body{height:100%;margin:0;background:#000;color:var(--text);font:15px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+    #status{position:fixed;top:8px;left:8px;right:8px;z-index:50;padding:.45rem .7rem;background:#222a;border-radius:8px;font-size:12px;backdrop-filter: blur(4px);}
+    #ui{position:fixed;top:48px;left:0;right:0;z-index:40;padding:.6rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;background:linear-gradient(to bottom, #0009, #0000);}
+    select,button{height:44px;border-radius:12px;border:1px solid #2a2d33;background:var(--panel);color:var(--text);}
+    select{padding:0 .75rem;min-width:220px;}
+    button{padding:0 16px;font-weight:600}
+    .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .ghost{background:#1a1d22}
+    #enter{position:fixed;bottom:24px;left:0;right:0;margin:0 auto;width:min(420px,86vw);height:56px;border-radius:18px}
+    canvas{display:block}
+    #overlayMsg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#ddd;background:#0000;pointer-events:none}
+    #reticleHint{position:fixed;bottom:96px;left:0;right:0;text-align:center;color:#cbd5e1;font-size:13px;text-shadow:0 1px 2px #0007;}
+  </style>
 </head>
 <body>
+  <!-- top status strip -->
+  <div id="status">boot…</div>
 
-<div id="log">boot…</div>
+  <!-- controls -->
+  <div id="ui">
+    <label for="modelSel" style="opacity:.9">Model</label>
+    <select id="modelSel"><option>Loading…</option></select>
+    <button id="addBtn" class="primary">+ Add</button>
+    <button id="undoBtn" class="ghost">⟲ Undo</button>
+    <button id="clearBtn" class="ghost">🗑️ Clear</button>
+  </div>
 
-<div id="hud">
-  <label for="model">Model</label>
-  <select id="model"><option>Loading…</option></select>
-  <button id="add" class="primary">+ Add</button>
-  <button id="undo">↺ Undo</button>
-  <button id="clear" class="warn">🗑 Clear</button>
-</div>
+  <div id="reticleHint" style="display:none;">Move your phone to find a surface • tap to place</div>
 
-<canvas id="stage"></canvas>
-<button id="enter" class="primary">📷 Enter AR</button>
-<div id="toast"></div>
+  <!-- big AR button -->
+  <button id="enter" class="primary">📷 Enter AR</button>
 
-<script type="module">
-/* ===== Imports (local, no CDN) ===== */
-import * as THREE from './lib/three/build/three.module.js?v=1';
-import { GLTFLoader }  from './lib/three/examples/jsm/loaders/GLTFLoader.js?v=1';
-import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js?v=1';
+  <!-- simple overlay to keep DOM overlay feature happy -->
+  <div id="overlayMsg">AR running…</div>
 
-/* ===== UI helpers ===== */
-const logEl = document.getElementById('log');
-const toastEl = document.getElementById('toast');
-const modelSel = document.getElementById('model');
-const addBtn   = document.getElementById('add');
-const undoBtn  = document.getElementById('undo');
-const clearBtn = document.getElementById('clear');
-const enterBtn = document.getElementById('enter');
+  <script type="module">
+    // --- Imports (ALL RELATIVE) ---
+    import * as THREE from './lib/three/build/three.module.js';
+    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
+    import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
 
-function log(msg){ const t = new Date().toTimeString().slice(0,8); logEl.textContent = `${t} — ${msg}`; console.log('[AR]', msg); }
-function toast(msg){ toastEl.textContent = msg; toastEl.style.display='block'; setTimeout(()=>toastEl.style.display='none', 2500); }
+    // ---------- UI helpers ----------
+    const $ = sel => document.querySelector(sel);
+    const statusEl = $('#status');
+    const log = (msg) => { statusEl.textContent = msg; console.log('[AR]', msg); };
 
-/* ===== Inline catalog (edit this list only) ===== */
-const CATALOG = [
-  { name: 'Podium',        url: './models/podium.glb' },
-  { name: 'Concert Stage', url: './models/concert-stage.glb' },
-  { name: 'Chair',         url: './models/chair.glb' },
-  { name: 'Couch',         url: './models/couch.glb' },
-  { name: 'Chaise',        url: './models/chaisehighpoly.glb' },
-];
+    const modelSel  = $('#modelSel');
+    const addBtn    = $('#addBtn');
+    const undoBtn   = $('#undoBtn');
+    const clearBtn  = $('#clearBtn');
+    const enterBtn  = $('#enter');
+    const hintEl    = $('#reticleHint');
 
-/* Populate dropdown */
-modelSel.innerHTML = '';
-for (const m of CATALOG) {
-  const opt = document.createElement('option'); opt.value = m.url; opt.textContent = m.name; modelSel.appendChild(opt);
-}
-log(`catalog loaded (${CATALOG.length})`);
-
-/* ===== Single global GLTFLoader + DRACO ===== */
-const manager = new THREE.LoadingManager();
-const gltfLoader = new GLTFLoader(manager);
-
-const draco = new DRACOLoader(manager);
-// Build an absolute URL to the Draco folder that contains:
-// draco_wasm_wrapper.js, draco_decoder.js, draco_decoder.wasm
-const dracoFolder = new URL('./lib/three/examples/jsm/libs/draco/', import.meta.url).href;
-draco.setDecoderPath(dracoFolder);
-draco.setDecoderConfig({ type:'wasm' });
-draco.setWorkerLimit(1);
-draco.preload();
-
-gltfLoader.setDRACOLoader(draco);
-log(`draco wired: ${!!gltfLoader.dracoLoader} @ ${dracoFolder}`);
-
-/* ===== THREE scene (shared for preview + AR) ===== */
-const canvas = document.getElementById('stage');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.xr.enabled = true;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
-camera.position.set(0, 1.6, 3);
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.0));
-const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-dir.position.set(0.5, 1, 0.5);
-scene.add(dir);
-
-window.addEventListener('resize', ()=>{
-  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-/* ===== Preview mode: load + drop at origin ===== */
-function autoScaleTo1m(obj){
-  obj.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(obj);
-  const size = new THREE.Vector3(); box.getSize(size);
-  const maxDim = Math.max(size.x, size.y, size.z) || 1;
-  const s = 1.2 / maxDim; // ~1.2m target
-  obj.scale.multiplyScalar(s);
-}
-
-function loadAndAdd(url, placeAt){
-  log('loading ' + url);
-  gltfLoader.load(url, (gltf)=>{
-    const root = gltf.scene || gltf.scenes[0];
-    root.traverse(o=>{ if(o.isMesh){ o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } });
-    autoScaleTo1m(root);
-    if (placeAt){ // AR: matrix provided
-      root.matrix.copy(placeAt); root.matrix.decompose(root.position, root.quaternion, root.scale);
-    } else { // Preview: origin
-      root.position.set(0,0,0);
+    // ---------- Load catalog ----------
+    let CATALOG = [];
+    async function loadCatalog() {
+      try {
+        log('Loading catalog…');
+        const res = await fetch('./models/models.json', { cache:'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' for models.json');
+        const data = await res.json();
+        // Accept either {models:[...]} or [...] shapes
+        CATALOG = Array.isArray(data) ? data : (data.models || []);
+        modelSel.innerHTML = '';
+        CATALOG.forEach((m,i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = m.name || m.id || m.file || ('Model '+(i+1));
+          modelSel.appendChild(opt);
+        });
+        log('Catalog loaded');
+      } catch (err) {
+        console.error(err);
+        modelSel.innerHTML = '<option>Failed to load catalog</option>';
+        log('Catalog load error: ' + err.message);
+      }
     }
-    root.userData.isPlaced = true;
-    scene.add(root);
-    placements.push(root);
-    log('loaded ' + url);
-  }, undefined, (err)=>{
-    console.error('GLB load failed:', url, err);
-    toast(`Load failed: ${url.split('/').pop()}`);
-    log(`model load error: ${err?.message || err}`);
-  });
-}
 
-addBtn.addEventListener('click', ()=> loadAndAdd(modelSel.value, null));
-undoBtn.addEventListener('click', ()=>{
-  const last = placements.pop();
-  if (last) { last.parent?.remove(last); log('Undo: removed last'); }
-});
-clearBtn.addEventListener('click', ()=>{
-  while(placements.length){ const o = placements.pop(); o.parent?.remove(o); }
-  log('Cleared all objects');
-});
+    // ---------- Three.js scene ----------
+    let renderer, scene, camera, xrRefSpace, xrHitSource = null;
+    const placed = []; // stack for undo/clear
+    let pendingToPlace = null; // {gltf, scale, yUp}
+    let placingArmed = false;
 
-/* Keep preview running */
-(function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); })();
+    // reticle
+    const reticle = new THREE.Mesh(
+      new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2),
+      new THREE.MeshBasicMaterial({ color: 0x1ea7ff, transparent:true, opacity:0.85 })
+    );
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
 
-/* ===== AR mode (hit-test + tap to place) ===== */
-const placements = [];
-let reticle = null;
+    // loaders (GLTF + DRACO)
+    const gltfLoader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/'); // this folder must contain the 3 draco files
+    gltfLoader.setDRACOLoader(draco);
 
-async function startAR(){
-  if (!navigator.xr){ toast('WebXR not available'); return; }
-  const supported = await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
-  if (!supported){ toast('immersive-ar not supported'); return; }
+    function initThree() {
+      renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
 
-  const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test','local-floor'] });
-  renderer.xr.setReferenceSpaceType('local-floor'); await renderer.xr.setSession(session);
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 40);
+      scene.add(camera);
 
-  const xrRefSpace = await session.requestReferenceSpace('local-floor');
-  const viewerSpace = await session.requestReferenceSpace('viewer');
-  const hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+      const light = new THREE.HemisphereLight(0xffffff, 0x222233, 1.0);
+      scene.add(light);
 
-  // Reticle
-  reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color:0x4ea3ff })
-  );
-  reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
+      scene.add(reticle);
 
-  // Tap to place (XR select)
-  session.addEventListener('select', ()=>{
-    if (!reticle?.visible) return;
-    loadAndAdd(modelSel.value, reticle.matrix.clone());
-  });
+      window.addEventListener('resize', () => {
+        camera.aspect = innerWidth/innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+    }
 
-  renderer.setAnimationLoop((t, frame)=>{
-    if (!frame) return;
-    const hits = hitTestSource ? frame.getHitTestResults(hitTestSource) : [];
-    if (hits.length){
-      const pose = hits[0].getPose(xrRefSpace);
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
-    } else {
+    // ---------- Model loading ----------
+    async function loadSelectedModel() {
+      const idx = parseInt(modelSel.value, 10);
+      const info = CATALOG[idx];
+      if (!info) { log('Pick a model'); return; }
+
+      // paths relative to THIS html
+      const url = './models/' + (info.file || info.url || info.src);
+      const scale = info.scale || 1;
+      const yUp   = info.yUp !== false; // default true
+
+      log('Loading model: ' + (info.name || info.file));
+      return new Promise((resolve,reject)=>{
+        gltfLoader.load(url, (gltf)=>{
+          log('Model ready • tap to place');
+          pendingToPlace = { gltf, scale, yUp };
+          placingArmed = true;
+          addBtn.classList.add('primary');
+          hintEl.style.display = 'block';
+          resolve(gltf);
+        }, undefined, (err)=>{
+          log('Model load error: ' + err.message);
+          reject(err);
+        });
+      });
+    }
+
+    // ---------- AR session ----------
+    async function beginAR() {
+      if (!navigator.xr) { log('WebXR not available'); return; }
+
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!supported) { log('immersive-ar not supported'); return; }
+
+      const session = await navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test', 'dom-overlay'],
+        domOverlay: { root: document.body }
+      });
+
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(session);
+
+      const viewerSpace = await session.requestReferenceSpace('viewer');
+      xrRefSpace = await session.requestReferenceSpace('local');
+      xrHitSource = await session.requestHitTestSource({ space: viewerSpace });
+
+      session.addEventListener('end', ()=>{
+        xrHitSource = null; xrRefSpace = null;
+        reticle.visible = false;
+        hintEl.style.display = 'none';
+        log('AR session ended');
+      });
+
+      // touch to place
+      renderer.domElement.addEventListener('touchend', (e)=>{
+        if (!placingArmed || !reticle.visible || !pendingToPlace) return;
+        e.preventDefault();
+        const { gltf, scale, yUp } = pendingToPlace;
+        const obj = gltf.scene.clone(true);
+        obj.traverse(o => { if (o.isMesh){ o.castShadow=false; o.receiveShadow=false; }});
+        if (!yUp) obj.rotation.x = -Math.PI/2;
+        obj.scale.setScalar(scale);
+        obj.position.setFromMatrixPosition(reticle.matrix);
+        obj.quaternion.setFromRotationMatrix(reticle.matrix);
+        scene.add(obj);
+        placed.push(obj);
+        placingArmed = false;
+        hintEl.style.display = 'none';
+        addBtn.classList.remove('primary');
+        log('Object placed • Add to place another');
+      }, { passive:false });
+
+      log('AR session started. Move phone; tap to place.');
+      renderer.setAnimationLoop(onXRFrame);
+    }
+
+    function onXRFrame(time, frame) {
+      const session = renderer.xr.getSession();
+      if (!session || !xrHitSource || !xrRefSpace) { renderer.render(scene, camera); return; }
+
+      const pose = frame.getViewerPose(xrRefSpace);
       reticle.visible = false;
+
+      const results = frame.getHitTestResults(xrHitSource);
+      if (results.length) {
+        const hit = results[0];
+        const hitPose = hit.getPose(xrRefSpace);
+        reticle.visible = true;
+        reticle.matrix.fromArray(hitPose.transform.matrix);
+      }
+      renderer.render(scene, camera);
     }
-    renderer.render(scene, camera);
-  });
 
-  session.addEventListener('end', ()=>{
-    renderer.setAnimationLoop(null);
-    reticle?.removeFromParent(); reticle=null;
-    log('AR session ended');
-  });
+    // ---------- Wire UI ----------
+    addBtn.onclick = () => loadSelectedModel();
+    undoBtn.onclick = () => {
+      const last = placed.pop();
+      if (last) { scene.remove(last); last.traverse?.(o=>o.dispose?.()); log('Undo last'); }
+    };
+    clearBtn.onclick = () => {
+      while (placed.length) scene.remove(placed.pop());
+      log('Cleared');
+    };
+    enterBtn.onclick = () => beginAR();
 
-  log('AR started — move to find a surface; tap to place.');
-}
-
-enterBtn.addEventListener('click', startAR);
-
-/* ===== Final readiness log ===== */
-(async ()=>{
-  const https = location.protocol === 'https:' || location.hostname === 'localhost';
-  let hasXR = !!navigator.xr, immersive = false;
-  if (hasXR) immersive = await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
-  log(`ready — secure:${https} hasXR:${hasXR} immersive-ar:${immersive}`);
-})();
-</script>
+    // ---------- Boot ----------
+    initThree();
+    loadCatalog();
+  </script>
 </body>
 </html>
