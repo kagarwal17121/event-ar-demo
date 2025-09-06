@@ -18,8 +18,16 @@
     .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:70px;z-index:24;color:#fff;background:rgba(0,0,0,.6);padding:8px 12px;border-radius:10px;font-size:12px;display:none;max-width:90%;text-align:center}
     .diag{position:fixed;top:0;left:0;right:0;z-index:30;padding:6px 8px;font:12px/1.3 system-ui;color:#fff;background:rgba(0,0,0,.6)}
     .diag small{opacity:.8}
-    .cdn-fail{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);color:#fff;background:rgba(0,0,0,.7);padding:10px 12px;border-radius:10px;display:none;text-align:center}
   </style>
+
+  <!-- Import map so example loaders can `import ... from 'three'` locally -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./lib/three/three.module.js"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="diag" class="diag"><small>boot…</small></div>
@@ -35,13 +43,12 @@
 
   <button id="enterAR" class="arBtn">📷 Enter AR</button>
   <div id="toast" class="toast">…</div>
-  <div id="cdnFail" class="cdn-fail">Couldn’t load scripts (CDN blocked).<br/>Reload or try another network.</div>
 
-  <!-- Main module -->
   <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+    import * as THREE from 'three';
+    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
 
+    // ---- UI refs ----
     const sel      = document.getElementById('modelSelect');
     const addBtn   = document.getElementById('addBtn');
     const undoBtn  = document.getElementById('undoBtn');
@@ -58,7 +65,7 @@
       toast._t = setTimeout(()=> toastEl.style.display='none', ms);
     };
 
-    // Three.js setup
+    // ---- Three.js basics ----
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera();
     const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
@@ -76,18 +83,21 @@
     reticle.visible = false;
     scene.add(reticle);
 
+    // AR session state
     let session = null, hitTestSource = null, localSpace = null;
 
+    // Catalog state
     const loader = new GLTFLoader();
-    const catalog = [];
+    const catalog = [];          // [{label, src, scale?, yOffset?}]
     let selectedItem = null;
     let toPlace = null;
     const placed = [];
 
+    // ---- Load JSON catalog (cache-bust) ----
     async function loadCatalog(){
       try{
         const url = new URL('./models/models.json', location.href);
-        url.searchParams.set('v', Date.now().toString()); // cache-bust
+        url.searchParams.set('v', Date.now().toString());
         const res = await fetch(url.toString(), { cache:'no-store' });
         if (!res.ok) throw new Error(`models.json HTTP ${res.status}`);
         const data = await res.json();
@@ -120,6 +130,7 @@
     }
     sel.addEventListener('change', ()=>{ selectedItem = catalog.find(x => x.src === sel.value); });
 
+    // ---- Queue model for placement ----
     addBtn.addEventListener('click', async ()=>{
       if (!selectedItem){ toast('Choose a model first'); return; }
       try{
@@ -145,6 +156,7 @@
       }
     });
 
+    // ---- Undo / Clear ----
     function disposeObj(obj){
       obj.traverse(o=>{
         if (o.geometry) o.geometry.dispose();
@@ -163,6 +175,7 @@
       log('cleared ✔');
     });
 
+    // ---- Support checks (same as your cube test) ----
     async function checkAR(){
       if (!isSecureContext){ enterAR.disabled=true; enterAR.textContent='HTTPS required'; log('not secure'); toast('Open over HTTPS'); return false; }
       if (!('xr' in navigator)){ enterAR.disabled=true; enterAR.textContent='WebXR unavailable'; log('navigator.xr missing'); toast('Use Android + Chrome with ARCore'); return false; }
@@ -173,6 +186,7 @@
       return ok;
     }
 
+    // ---- Start AR session ----
     enterAR.addEventListener('click', async ()=>{
       try{
         const ok = await checkAR(); if (!ok) return;
@@ -237,18 +251,6 @@
 
     await loadCatalog();
     await checkAR();
-  </script>
-
-  <!-- Fallback if the module above fails to load at all (e.g., CDN blocked) -->
-  <script>
-    setTimeout(() => {
-      const diag = document.getElementById('diag');
-      const cdnFail = document.getElementById('cdnFail');
-      if (diag && /boot/.test(diag.textContent)) {
-        // The module didn’t run → likely CDN blocked
-        cdnFail.style.display = 'block';
-      }
-    }, 1500);
   </script>
 </body>
 </html>
