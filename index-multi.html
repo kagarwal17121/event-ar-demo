@@ -38,6 +38,42 @@
 <div id="toast"></div>
 
 <script type="module">
+  import * as THREE from './lib/three/build/three.module.js?v=1';
+  import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js?v=1';
+  import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js?v=1';
+
+  // --- ONE global LoadingManager + ONE global GLTFLoader ---
+  const manager = new THREE.LoadingManager();
+
+  // Draco: build an ABSOLUTE URL to the folder that has the 3 files
+  // (draco_wasm_wrapper.js, draco_decoder.js, draco_decoder.wasm)
+  const dracoPath = new URL('./lib/three/examples/jsm/libs/draco/', import.meta.url).href;
+
+  const draco = new DRACOLoader(manager);
+  draco.setDecoderPath(dracoPath);   // must end with '/'
+  draco.setDecoderConfig({ type: 'wasm' });
+  draco.setWorkerLimit(1);
+  draco.preload();
+
+  const gltfLoader = new GLTFLoader(manager);
+  gltfLoader.setDRACOLoader(draco);
+
+  // Debug: prove Draco is attached and the path is correct
+  console.log('draco wired:', !!gltfLoader.dracoLoader, 'path:', dracoPath);
+
+  // Use THIS gltfLoader everywhere below (preview + AR). Do NOT create another GLTFLoader.
+  // Example test load (optional):
+  const testUrl = './models/podium.glb';
+  gltfLoader.load(
+    testUrl,
+    () => console.log('draco test: loaded', testUrl),
+    undefined,
+    (e) => console.log('draco test FAILED:', e?.message || e)
+  );
+
+  // … your existing scene / UI / AR code continues here …
+</script>
+
 /* ----------------- imports ----------------- */
 import * as THREE from './lib/three/build/three.module.js';
 import { GLTFLoader }  from './lib/three/examples/jsm/loaders/GLTFLoader.js';
