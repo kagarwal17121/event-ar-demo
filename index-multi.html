@@ -1,288 +1,388 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Event AR – Queue + Edit (fixed)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>AR Catalog — Multi</title>
 <style>
-  :root{color-scheme:dark}
-  html,body{height:100%} body{margin:0;background:#0b0b0f;color:#e6e6eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  #status{position:fixed;top:0;left:0;right:0;height:28px;padding:4px 10px;font:12px/20px ui-monospace,Menlo,Consolas,monospace;color:#ddd;background:rgba(0,0,0,.55);z-index:999;white-space:nowrap;overflow:auto}
-  #ui{position:fixed;inset:0 auto auto 0;width:100%;padding:12px;background:linear-gradient(180deg,rgba(0,0,0,.7) 0,rgba(0,0,0,0) 120px);z-index:5}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  select,button{height:44px;border-radius:12px;border:1px solid #2a2a35;background:#17171f;color:#fff;padding:0 12px;font-size:16px}
-  button.primary{background:#2b6cff;border-color:#2b6cff}
-  button.ghost{background:#11131a}
-  button.small{height:36px;padding:0 10px;font-size:14px}
-  button:disabled{opacity:.5}
-  #hint{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:rgba(0,0,0,.55);padding:10px 14px;border-radius:12px;font-size:14px;display:none;z-index:4}
-  #enter{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:4}
-  #editHud{display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:6;gap:8px;align-items:center}
-  #gestureHint{background:rgba(0,0,0,.55);padding:8px 12px;border-radius:12px;font-size:14px}
-  canvas{display:block;width:100vw;height:100vh;touch-action:none} /* allow pinch/twist */
+  :root { color-scheme: dark; }
+  html, body { margin:0; height:100%; background:#0b0b0f; font:15px system-ui, -apple-system, Segoe UI, Roboto; color:#eaeaf1;}
+  #hud { position:fixed; inset:0 auto auto 0; width:100%; box-sizing:border-box; padding:10px 12px; display:flex; gap:10px; align-items:center; background:rgba(10,10,12,.85); backdrop-filter:saturate(1.4) blur(6px); }
+  #status { position:fixed; left:0; right:0; top:0; text-align:left; font:12px; color:#9aa0a6; padding:4px 10px; background:#1a1c22; }
+  select, button { height:44px; border-radius:12px; border:1px solid #2a2e36; background:#14161b; color:#fff; padding:0 14px; }
+  select { min-width:210px; }
+  button.primary { background:#2563ff; border-color:#2563ff; }
+  button.ghost { background:#191b22; }
+  button:disabled { opacity:.45; }
+  #right { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  #enter { position:fixed; left:50%; transform:translateX(-50%); bottom:22px; height:56px; border-radius:28px; padding:0 22px; }
+  #reticle { position:fixed; width:44px; height:44px; left:calc(50% - 22px); top:calc(50% - 22px); border:4px solid #1ea0ff; border-radius:50%; opacity:0; pointer-events:none; transition:opacity .18s ease; }
+  #hint { position:fixed; left:50%; transform:translateX(-50%); bottom:90px; color:#c9d1d9; font-size:13px; opacity:.9; }
+  #toolbar { position:fixed; left:50%; transform:translateX(-50%); bottom:90px; display:flex; gap:8px; }
+  #toolbar > button { height:40px; border-radius:10px; padding:0 12px; }
+  canvas { width:100vw; height:100vh; display:block; touch-action:none; }
+  .chip { font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #2a2e36; background:#12141a;}
+  .on      { border-color:#2f9e44; color:#b7ffbe;}
+  .editing { outline:2px dashed #52a8ff; outline-offset:2px;}
 </style>
 
-<!-- Local import map -->
+<!-- Import map for local Three.js modules -->
 <script type="importmap">
 {
-  "imports":{
-    "three":"./lib/three/build/three.module.js",
-    "three/addons/":"./lib/three/examples/jsm/"
+  "imports": {
+    "three": "./lib/three/build/three.module.js",
+    "three/addons/": "./lib/three/examples/jsm/"
   }
 }
 </script>
 </head>
 <body>
-  <div id="status">boot…</div>
 
-  <div id="ui">
-    <div class="row" style="margin-bottom:10px;">
-      <label for="modelSel" style="opacity:.85">Model</label>
-      <select id="modelSel"><option>Loading…</option></select>
-      <button id="btnQueue" class="primary">+ Add to queue</button>
-      <button id="btnPlace" class="ghost">Place now</button>
-      <button id="btnUndo"  class="ghost">↶ Undo</button>
-      <button id="btnClear" class="ghost">🗑 Clear</button>
-    </div>
-    <div class="row"><div id="qInfo" style="opacity:.8;">Queue: 0</div></div>
+<div id="status">boot…</div>
+
+<div id="hud">
+  <label for="modelSel">Model</label>
+  <select id="modelSel"><option>Loading…</option></select>
+
+  <button id="btnAdd" class="primary">+ Add</button>
+  <button id="btnUndo" class="ghost">↺ Undo</button>
+  <button id="btnClear" class="ghost">🗑 Clear</button>
+
+  <div id="right">
+    <span id="editChip" class="chip">Edit: off</span>
+    <button id="btnShot" class="ghost">📸 Snapshot</button>
+    <button id="btnRec"  class="ghost">⏺ Start</button>
   </div>
+</div>
 
-  <div id="hint">Tap to place next queued model</div>
+<div id="toolbar" hidden>
+  <button id="btnModeMove"  class="ghost">Move</button>
+  <button id="btnModeScale" class="ghost">Scale</button>
+  <button id="btnLock"      class="ghost">🔒 Lock</button>
+</div>
 
-  <div id="editHud">
-    <button id="btnDone" class="primary">✅ Done</button>
-    <button id="rotL" class="small ghost">◀ Rotate</button>
-    <button id="rotR" class="small ghost">Rotate ▶</button>
-    <button id="sMinus" class="small ghost">Scale −</button>
-    <button id="sPlus" class="small ghost">Scale +</button>
-    <div id="gestureHint">Pinch = scale · twist = rotate</div>
-  </div>
+<div id="hint" hidden>Tap where the ring is to place</div>
+<div id="reticle"></div>
 
-  <button id="enter" class="primary">📷 Enter AR</button>
+<button id="enter" class="primary">📷 Enter AR</button>
 
-  <script>
-    (function(){
-      const s=document.getElementById('status');
-      addEventListener('error', e=> s.textContent='Error: '+e.message);
-      addEventListener('unhandledrejection', e=> s.textContent='Error: '+(e.reason?.message||e.reason));
-    })();
-  </script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-  <script type="module">
-    import * as THREE from 'three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+const $ = (id)=>document.getElementById(id);
+const modelSel = $('modelSel');
+const statusEl = $('status');
+const enterBtn = $('enter');
+const btnAdd = $('btnAdd');
+const btnUndo = $('btnUndo');
+const btnClear = $('btnClear');
+const btnShot = $('btnShot');
+const btnRec  = $('btnRec');
+const reticleEl = $('reticle');
+const hintEl = $('hint');
+const editChip = $('editChip');
+const tb = $('toolbar');
+const btnModeMove = $('btnModeMove');
+const btnModeScale = $('btnModeScale');
+const btnLock = $('btnLock');
 
-    // UI
-    const statusEl = document.getElementById('status');
-    const modelSel = document.getElementById('modelSel');
-    const btnQueue = document.getElementById('btnQueue');
-    const btnPlace = document.getElementById('btnPlace');
-    const btnUndo  = document.getElementById('btnUndo');
-    const btnClear = document.getElementById('btnClear');
-    const qInfo    = document.getElementById('qInfo');
-    const hintEl   = document.getElementById('hint');
-    const enterBtn = document.getElementById('enter');
-    const editHud  = document.getElementById('editHud');
-    const btnDone  = document.getElementById('btnDone');
-    const rotL     = document.getElementById('rotL');
-    const rotR     = document.getElementById('rotR');
-    const sMinus   = document.getElementById('sMinus');
-    const sPlus    = document.getElementById('sPlus');
+let xrSession = null;
+let currentAnchorSpace = null;
+let placeMode = 'move';   // 'move' | 'scale'
+let editing = false;
+let locked = false;
 
-    const log = m => { statusEl.textContent = m; console.log(m); };
+let renderer, scene, camera, xrRefSpace, hitTestSource = null, viewerSpace = null;
+let reticle3D;
+let catalog = [];
+let placed = []; // stack of placed THREE.Object3D
+let active = null; // currently selected/last placed object
 
-    // Catalog
-    const CATALOG_URL = './models/models.json';
-    let catalog = [];
-    const cache = new Map();
-    const queue = [];
-    const placed = [];
+// ---------- Three basics ----------
+renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
 
-    // Edit state
-    let selected = null, editing = false;
-    let gTwo = null;
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 40);
 
-    function updateQueueInfo(){
-      qInfo.textContent = `Queue: ${queue.length}`;
-      hintEl.style.display = (renderer.xr.isPresenting && !editing && queue.length>0) ? 'block' : 'none';
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+dir.position.set(1, 2, 1);
+dir.castShadow = true;
+scene.add(dir);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.ShadowMaterial({ opacity:0.35 }));
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Reticle
+reticle3D = new THREE.Mesh(
+  new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color:0x1ea0ff, side:THREE.DoubleSide })
+);
+reticle3D.matrixAutoUpdate = false;
+reticle3D.visible = false;
+scene.add(reticle3D);
+
+// Loaders
+const draco = new DRACOLoader();
+draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf = new GLTFLoader();
+gltf.setDRACOLoader(draco);
+
+// ---------- UI helpers ----------
+function setStatus(t){ statusEl.textContent = t; }
+function showReticle(show){ reticleEl.style.opacity = show ? 1 : 0; reticle3D.visible = !!show; }
+function showHint(t){ hintEl.textContent = t; hintEl.hidden = false; }
+function hideHint(){ hintEl.hidden = true; }
+function setEdit(on){
+  editing = on;
+  editChip.textContent = `Edit: ${on ? 'on' : 'off'}`;
+  editChip.classList.toggle('on', on);
+  tb.hidden = !on;
+  if (active) active.traverse(o=>o.isMesh && o.material && (o.material.needsUpdate=true));
+}
+function setLock(on){
+  locked = on;
+  btnLock.textContent = on ? '🔓 Unlock' : '🔒 Lock';
+}
+
+// ---------- Catalog ----------
+async function loadCatalog(){
+  setStatus('loading catalog…');
+  try{
+    const res = await fetch('./models/models.json', { cache:'no-cache' });
+    const json = await res.json();
+    catalog = Array.isArray(json) ? json : (json.models || []);
+    modelSel.innerHTML = '';
+    for (const item of catalog){
+      const opt = document.createElement('option');
+      opt.value = item.url; opt.textContent = item.name || item.url;
+      modelSel.appendChild(opt);
     }
+    setStatus(`catalog loaded (${catalog.length})`);
+  }catch(e){
+    setStatus('failed to load ./models/models.json');
+    modelSel.innerHTML = '<option>Failed to load</option>';
+  }
+}
+await loadCatalog();
 
-    // Three / scene
-    const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setSize(innerWidth, innerHeight);
-    document.body.appendChild(renderer.domElement);
+// ---------- AR session ----------
+enterBtn.onclick = async ()=>{
+  if (xrSession){ xrSession.end(); return; }
+  if (!navigator.xr) { alert('WebXR not available'); return; }
+  const ok = await navigator.xr.isSessionSupported('immersive-ar');
+  if(!ok){ alert('immersive-ar not supported'); return; }
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
-    camera.position.set(0,1.6,3);
+  xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test', 'local-floor'] });
+  renderer.xr.setSession(xrSession);
 
-    const hemi = new THREE.HemisphereLight(0xffffff,0x444466,0.8); scene.add(hemi);
-    const dir  = new THREE.DirectionalLight(0xffffff,1.2); dir.position.set(3,5,2); dir.castShadow=true; scene.add(dir);
+  xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
+  viewerSpace = await xrSession.requestReferenceSpace('viewer');
+  const hitSrc = await xrSession.requestHitTestSource({ space: viewerSpace });
+  hitTestSource = hitSrc;
 
-    const reticleGeo = new THREE.RingGeometry(0.12,0.15,32).rotateX(-Math.PI/2);
-    const reticleMat = new THREE.MeshBasicMaterial({color:0x4da3ff});
-    const reticle = new THREE.Mesh(reticleGeo, reticleMat); reticle.visible=false; scene.add(reticle);
+  xrSession.addEventListener('end', ()=>{
+    xrSession = null; hitTestSource = null; viewerSpace = null; currentAnchorSpace = null;
+    setStatus('AR session ended');
+    enterBtn.textContent = '📷 Enter AR';
+    showReticle(false); hideHint(); setEdit(false); setLock(false);
+  });
 
-    // Loaders
-    const draco = new DRACOLoader();
-    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-    const gltf = new GLTFLoader(); gltf.setDRACOLoader(draco);
+  xrSession.addEventListener('select', onARSelect);
 
-    // Helpers
-    function enableShadows(obj,on){ obj.traverse(n=>{ if(n.isMesh){ n.castShadow=on; n.receiveShadow=on; } }); }
-    async function preloadModel(idx){
-      const item = catalog[idx]; if (!item) throw new Error('invalid index');
-      if (cache.has(item.url)) return cache.get(item.url);
-      const gl = await gltf.loadAsync(item.url);
-      cache.set(item.url, gl.scene); return gl.scene;
-    }
-    function cloneFromCache(idx){
-      const it = catalog[idx], src = cache.get(it.url), obj = src.clone(true);
-      const s = it.scale ?? 1; obj.scale.setScalar(s);
-      if (it.rotation) obj.rotation.set(...it.rotation);
-      if (it.position) obj.position.set(...it.position);
-      enableShadows(obj, it.shadow !== false);
-      return obj;
-    }
-    const dist=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
-    const ang=(a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
+  enterBtn.textContent = '⏻ Exit AR';
+  setStatus('AR session started. Move phone; tap to place.');
+  showHint('Tap Add, then tap on the ring to place');
+  renderer.setAnimationLoop(onXRFrame);
+};
 
-    function enterEdit(obj){
-      selected=obj; editing=true; editHud.style.display='flex'; hintEl.style.display='none';
-      log('Edit: pinch to scale, twist to rotate');
-    }
-    function exitEdit(){ editing=false; selected=null; editHud.style.display='none'; updateQueueInfo(); }
+function onXRFrame(t, frame){
+  const session = frame.session;
+  const pose = frame.getViewerPose(xrRefSpace);
+  if (!pose) return;
 
-    // Catalog load
-    (async()=>{
-      try{
-        const r=await fetch(CATALOG_URL,{cache:'no-store'}); if(!r.ok) throw new Error(`HTTP ${r.status}`);
-        catalog=await r.json();
-        modelSel.innerHTML='';
-        catalog.forEach((it,i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=it.name||`Model ${i+1}`; modelSel.appendChild(o);});
-        log(`OK — loaded ${catalog.length} items from ${CATALOG_URL}`);
-      }catch(e){
-        modelSel.innerHTML='<option>Failed to load catalog</option>';
-        log(`Failed to load catalog: ${e.message}`);
+  // Hit test
+  const hits = frame.getHitTestResults(hitTestSource);
+  if (hits.length > 0){
+    const hit = hits[0];
+    const hitPose = hit.getPose(xrRefSpace);
+    reticle3D.matrix.fromArray(hitPose.transform.matrix);
+    showReticle(true);
+  } else {
+    showReticle(false);
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ---------- Placement flow ----------
+let arReadyToPlace = false; // set by Add button, cleared after drop
+
+btnAdd.onclick = ()=>{
+  if (!xrSession){ alert('Enter AR first.'); return; }
+  arReadyToPlace = true;
+  setEdit(false);
+  setLock(false);
+  showHint('Aim the ring and tap once to place');
+};
+
+async function onARSelect(ev){
+  if (!arReadyToPlace || !reticle3D.visible || locked) return;
+  const choice = catalog[modelSel.selectedIndex];
+  if (!choice){ return; }
+
+  try{
+    setStatus('loading model…');
+    const obj = (await gltf.loadAsync(choice.url)).scene;
+    obj.traverse(n=>{ if(n.isMesh){ n.castShadow = true; n.receiveShadow = true; }});
+    const s = choice.scale ?? 1;
+    obj.scale.setScalar(s);
+    obj.rotation.set(...(choice.rotation || [0,0,0]));
+    obj.position.set(0,0,0);
+    obj.applyMatrix4(reticle3D.matrix);
+    scene.add(obj);
+    placed.push(obj);
+    active = obj;
+    markEditingTarget(obj, true);
+    setEdit(true);
+    setLock(false);
+    arReadyToPlace = false;
+    showHint('Drag = move · Pinch = scale · Long-press = lock');
+    setStatus('placed');
+  }catch(e){
+    setStatus('model load error: '+e.message);
+  }
+}
+
+function markEditingTarget(obj, on){
+  if (!obj) return;
+  obj.traverse(o=>{
+    if (o.isMesh){
+      o.userData.__origEmissive ??= (o.material.emissive ? o.material.emissive.clone() : null);
+      if (on){
+        if (o.material.emissive) o.material.emissive.setHex(0x204eff);
+      }else{
+        if (o.material.emissive && o.userData.__origEmissive) o.material.emissive.copy(o.userData.__origEmissive);
       }
-    })();
+      o.material.needsUpdate = true;
+    }
+  });
+}
 
-    // UI actions
-    btnQueue.onclick = async()=>{
-      const idx=Number(modelSel.value); if(Number.isNaN(idx)) return;
-      try{ await preloadModel(idx); queue.push(idx); updateQueueInfo(); log(`Queued: ${catalog[idx].name}`);}catch(e){ log('preload error: '+e.message); alert(`Couldn't preload ${catalog[idx]?.name||'model'}`); }
-    };
-    btnPlace.onclick = async()=>{
-      const idx=Number(modelSel.value); if(Number.isNaN(idx)) return;
-      try{ await preloadModel(idx); queue.unshift(idx); updateQueueInfo(); log(`Armed placement: ${catalog[idx].name}`);}catch(e){ log('preload error: '+e.message); }
-    };
-    btnUndo.onclick = ()=>{
-      const last=placed.pop(); if(last){ last.parent?.remove(last); log('Undo: removed last'); }
-    };
-    btnClear.onclick = ()=>{
-      while(placed.length){ placed.pop().parent?.remove(placed[placed.length-1]); }
-      log('Cleared scene'); updateQueueInfo();
-    };
-    btnDone.onclick = ()=> exitEdit();
+// Undo / clear
+btnUndo.onclick = ()=>{
+  const o = placed.pop();
+  if (o){ scene.remove(o); o.traverse(c=>c.dispose && c.dispose()); if (o===active){ active=null; setEdit(false);} }
+  setStatus('undo');
+};
+btnClear.onclick = ()=>{
+  for (const o of placed){ scene.remove(o); }
+  placed.length = 0; active=null; setEdit(false); setLock(false);
+  setStatus('cleared');
+};
 
-    // Edit fallback buttons
-    rotL.onclick = ()=>{ if(selected) selected.rotation.y -= Math.PI/18; };
-    rotR.onclick = ()=>{ if(selected) selected.rotation.y += Math.PI/18; };
-    sMinus.onclick= ()=>{ if(selected){ const s=Math.max(0.1, selected.scale.x*0.9); selected.scale.setScalar(s);} };
-    sPlus.onclick = ()=>{ if(selected){ const s=Math.min(10,  selected.scale.x*1.1); selected.scale.setScalar(s);} };
+// ---------- Gestures (move/scale/lock) ----------
+let touchState = { t:0, x:0, y:0, d:0, fingers:0 };
+function distance2(touches){
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx,dy);
+}
 
-    // AR session
-    let xrRefSpace=null, hitTestSource=null;
+renderer.domElement.addEventListener('touchstart', (e)=>{
+  touchState.fingers = e.touches.length;
+  touchState.t = performance.now();
+  if (e.touches.length===1){
+    touchState.x = e.touches[0].clientX;
+    touchState.y = e.touches[0].clientY;
+  } else if (e.touches.length===2){
+    touchState.d = distance2(e.touches);
+  }
+});
 
-    enterBtn.onclick = async()=>{
-      if(!navigator.xr){ alert('WebXR not available'); return; }
-      if(!await navigator.xr.isSessionSupported('immersive-ar')){ alert('immersive-ar not supported'); return; }
+renderer.domElement.addEventListener('touchmove', (e)=>{
+  if (!editing || locked || !active) return;
 
-      renderer.xr.enabled=true;
-      const session = await navigator.xr.requestSession('immersive-ar',{
-        requiredFeatures:['hit-test','local-floor'],
-        optionalFeatures:['dom-overlay'],
-        domOverlay:{ root: document.body } // IMPORTANT: allows page to receive touch events
-      });
-      renderer.xr.setSession(session);
+  if (e.touches.length===1 && placeMode==='move'){
+    // move: project reticle and slide object towards it
+    if (reticle3D.visible){
+      const m = new THREE.Matrix4().copy(reticle3D.matrix);
+      const p = new THREE.Vector3().setFromMatrixPosition(m);
+      active.position.lerp(p, 0.25);
+    }
+  } else if (e.touches.length===2 && placeMode==='scale'){
+    const d2 = distance2(e.touches);
+    const delta = (d2 - touchState.d) / 300.0;
+    const s = THREE.MathUtils.clamp(active.scale.x + delta, 0.05, 10);
+    active.scale.setScalar(s);
+    touchState.d = d2;
+  }
+}, {passive:true});
 
-      xrRefSpace = await session.requestReferenceSpace('local-floor');
-      const viewer   = await session.requestReferenceSpace('viewer');
-      hitTestSource  = await session.requestHitTestSource({ space: viewer });
+renderer.domElement.addEventListener('touchend', (e)=>{
+  // Long-press to lock/unlock
+  const dt = performance.now() - touchState.t;
+  if (dt > 450 && active){
+    setLock(!locked);
+  }
+});
 
-      session.addEventListener('end', ()=>{
-        hitTestSource=null; xrRefSpace=null; reticle.visible=false; editing=false; selected=null;
-        editHud.style.display='none'; hintEl.style.display='none'; log('AR session ended');
-      });
+// Toolbar modes
+btnModeMove.onclick = ()=>{ placeMode='move'; btnModeMove.classList.add('on'); btnModeScale.classList.remove('on'); };
+btnModeScale.onclick = ()=>{ placeMode='scale'; btnModeScale.classList.add('on'); btnModeMove.classList.remove('on'); };
+btnLock.onclick = ()=> setLock(!locked);
+btnModeMove.click(); // default
 
-      // Place on tap — but ignore if editing or no queue
-      session.addEventListener('select', ()=>{
-        if (editing || !queue.length || !reticle.visible) return;
-        const idx=queue.shift();
-        const obj=cloneFromCache(idx);
-        obj.position.copy(reticle.position);
-        obj.quaternion.copy(reticle.quaternion);
-        scene.add(obj); placed.push(obj);
-        log(`Placed: ${catalog[idx].name}`);
-        enterEdit(obj);
-        updateQueueInfo();
-      });
+// Tap canvas to toggle edit selection (if touching an object)
+renderer.domElement.addEventListener('click', (e)=>{
+  if (!xrSession) return;
+  // simple toggle: last placed is active
+  if (active){ setEdit(!editing); markEditingTarget(active, editing); }
+});
 
-      // XR render loop
-      renderer.setAnimationLoop((t, frame)=>{
-        if(frame && hitTestSource && xrRefSpace){
-          const hits = frame.getHitTestResults(hitTestSource);
-          const canShow = (!editing && queue.length>0 && hits.length>0);
-          if (canShow){
-            const pose = hits[0].getPose(xrRefSpace);
-            reticle.matrix.fromArray(pose.transform.matrix);
-            reticle.position.setFromMatrixPosition(reticle.matrix);
-            reticle.quaternion.setFromRotationMatrix(reticle.matrix);
-          }
-          reticle.visible = canShow; // hide while editing or when queue empty
-        }
-        renderer.render(scene, camera);
-      });
+// ---------- Recording & Snapshot ----------
+let recorder=null, chunks=[], recording=false;
 
-      updateQueueInfo();
-      log('AR started — tap to place next in queue');
-    };
+function saveBlob(blob,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
 
-    // Gestures (now work thanks to dom-overlay)
-    function toPt(t){ return ({x:t.clientX,y:t.clientY}); }
-    renderer.domElement.addEventListener('touchstart',(e)=>{
-      if(!editing || !selected) return;
-      if(e.touches.length===2){
-        const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
-        gTwo={ startDist: dist(p1,p2), startAng: ang(p1,p2), startScale: selected.scale.x, startRotY: selected.rotation.y };
-      }
-    },{passive:true});
+btnShot.onclick = ()=>{
+  const url = renderer.domElement.toDataURL('image/png');
+  const a=document.createElement('a'); a.href=url; a.download=`ar-shot-${Date.now()}.png`; a.click();
+};
 
-    renderer.domElement.addEventListener('touchmove',(e)=>{
-      if(!editing || !selected || !gTwo || e.touches.length!==2) return;
-      const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
-      // scale
-      let s = gTwo.startScale * (dist(p1,p2)/gTwo.startDist);
-      s = Math.min(Math.max(s,0.1),10);
-      selected.scale.setScalar(s);
-      // rotate
-      const delta = ang(p1,p2) - gTwo.startAng;
-      selected.rotation.y = gTwo.startRotY + delta;
-    },{passive:true});
+btnRec.onclick = ()=>{
+  if (recording){ recorder.stop(); btnRec.textContent='⏺ Start'; recording=false; return; }
+  const stream = renderer.domElement.captureStream ? renderer.domElement.captureStream(30) : null;
+  if(!stream){ alert('Recording not supported here. Use Android Chrome or do OS screen-record.'); return; }
+  let mime='video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm;codecs=vp8';
+  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm';
+  chunks=[];
+  recorder=new MediaRecorder(stream,{mimeType:mime, videoBitsPerSecond:7_000_000});
+  recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  recorder.onstop=()=>saveBlob(new Blob(chunks,{type:mime}), `ar-recording-${Date.now()}.webm`);
+  recorder.start(); recording=true; btnRec.textContent='⏹ Stop';
+};
 
-    renderer.domElement.addEventListener('touchend',()=>{ if(editing) gTwo=null; },{passive:true});
-
-    // Non-AR loop
-    (function loop(){ if(!renderer.xr.isPresenting) renderer.render(scene,camera); requestAnimationFrame(loop);} )();
-
-    addEventListener('resize',()=>{
-      renderer.setSize(innerWidth,innerHeight);
-      camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-    });
-
-    log('Catalog loading…');
-  </script>
+// ---------- Resize ----------
+addEventListener('resize', ()=>{
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
+</script>
 </body>
 </html>
