@@ -3,175 +3,113 @@
 <head>
   <meta charset="utf-8" />
   <title>Event AR — Multi-Object (Android/Chrome)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <style>
-    :root{
-      --accent:#0a7cff; --bg:#111a; --panel:#fff; --border:#e9e9e9;
-    }
+    :root{ --accent:#0a7cff; --bg:#111a; --panel:#fff; --border:#e9e9e9; }
     html,body{margin:0;height:100%;background:#000;font-family:system-ui,Arial}
     canvas{display:block;width:100vw;height:100vh}
 
-    /* ===== Floating Menu FAB ===== */
-    .menu-fab{
-      position:fixed; right:12px; bottom:12px; z-index:20;
-      display:flex; align-items:center; gap:8px;
-      padding:14px 18px; font-size:18px;
-      border:0; border-radius:999px; color:#fff;
-      background:var(--accent); box-shadow:0 8px 24px rgba(0,0,0,.25);
+    /* Simple sticky header */
+    .topbar{
+      position:fixed; top:0; left:0; right:0; z-index:20;
+      display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;
+      padding:8px; background:#ffffffee; border-bottom:1px solid var(--border);
     }
-
-    /* ===== Bottom Sheet (scrollable) ===== */
-    .sheet{
-      position:fixed; left:0; right:0; bottom:0; z-index:30;
-      background:var(--panel); border-top-left-radius:16px; border-top-right-radius:16px;
-      box-shadow:0 -12px 30px rgba(0,0,0,.35);
-      transform:translateY(calc(100% - 64px)); /* collapsed to header height */
-      transition:transform .22s ease;
-      max-height:75vh; display:flex; flex-direction:column;
-    }
-    .sheet.open{ transform:translateY(0) }
-    .sheet-handle{
-      display:flex; align-items:center; justify-content:center; gap:10px;
-      padding:12px 14px; border-bottom:1px solid var(--border); user-select:none;
-      position:relative;
-    }
-    .dragbar{
-      position:absolute; top:8px; left:50%; transform:translateX(-50%);
-      width:46px; height:4px; border-radius:2px; background:#ddd;
-    }
-    .title{ font-weight:600; }
-    .sheet-body{
-      overflow:auto; -webkit-overflow-scrolling:touch;
-      padding:12px; display:grid; grid-template-columns:1fr; gap:10px;
-    }
-
-    /* Controls */
     label{font-size:14px}
     select{
-      width:100%; font-size:16px; padding:10px 12px;
-      border:1px solid var(--border); border-radius:10px; background:#fff;
+      min-width:220px; font-size:14px; padding:8px 10px;
+      border:1px solid var(--border); border-radius:8px; background:#fff;
     }
-    .row{ display:flex; gap:10px; flex-wrap:wrap }
     .btn{
-      flex:1 1 auto; min-width:140px;
-      padding:12px 14px; font-size:16px; border:1px solid var(--border);
-      border-radius:12px; background:#f7f7f7; cursor:pointer;
+      padding:10px 14px; font-size:14px; border:1px solid var(--border);
+      border-radius:10px; background:#f7f7f7; cursor:pointer;
     }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent) }
-    .btn.warn{ background:#ffeded; border-color:#ffd6d6; color:#a00 }
 
-    /* Hint / toast */
-    .hint{
-      position:fixed; left:50%; transform:translateX(-50%); bottom:84px; z-index:25;
-      color:#fff; background:rgba(0,0,0,.55);
-      padding:8px 12px; border-radius:10px; font-size:13px; display:none; max-width:90%; text-align:center;
+    .spacer{height:64px} /* to keep canvas clear under header */
+
+    /* Big Enter AR at bottom */
+    .arBtn{
+      position:fixed; left:50%; bottom:12px; transform:translateX(-50%);
+      z-index:25; border:0; border-radius:999px; padding:14px 20px; font-size:16px;
+      color:#fff; background:var(--accent); box-shadow:0 8px 24px rgba(0,0,0,.25);
     }
 
-    /* Make sure UI remains clickable inside AR (dom-overlay) */
-    .menu-fab, .sheet, .hint { pointer-events:auto }
+    /* Tiny toast/diagnostics */
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:70px; z-index:24; color:#fff; background:rgba(0,0,0,.55);
+      padding:8px 12px; border-radius:10px; font-size:12px; display:none; max-width:90%; text-align:center;
+    }
   </style>
 </head>
 <body>
-  <!-- floating quick actions -->
-  <button id="menuFab" class="menu-fab">☰ Menu</button>
-  <div id="hint" class="hint">Move your phone to scan; tap the floor to place</div>
-
-  <!-- bottom sheet -->
-  <div id="sheet" class="sheet" role="dialog" aria-label="Controls">
-    <div class="sheet-handle" id="sheetToggle">
-      <div class="dragbar"></div>
-      <div class="title">AR Controls</div>
-    </div>
-    <div class="sheet-body">
-      <div>
-        <label for="modelSelect">Model</label>
-        <select id="modelSelect"><option>Loading…</option></select>
-      </div>
-
-      <div class="row">
-        <button id="addBtn"   class="btn primary">➕ Add to scene</button>
-        <button id="enterAR"  class="btn">📷 Enter AR</button>
-      </div>
-
-      <div class="row">
-        <button id="undoBtn"  class="btn">↶ Undo last</button>
-        <button id="clearBtn" class="btn warn">🗑️ Clear all</button>
-      </div>
-
-      <p style="font-size:13px;opacity:.8;margin:6px 2px 0;">
-        Tip: After tapping <b>Enter AR</b>, move your phone to detect a floor (blue ring shows up), then <b>tap</b> to place the selected model. You can add multiple items.
-      </p>
-    </div>
+  <div class="topbar">
+    <label for="modelSelect">Model</label>
+    <select id="modelSelect"><option>Loading…</option></select>
+    <button id="addBtn"  class="btn primary">➕ Add</button>
+    <button id="undoBtn" class="btn">↶ Undo</button>
+    <button id="clearBtn" class="btn">🗑️ Clear</button>
   </div>
+  <div class="spacer"></div>
 
-  <!-- Three.js / WebXR -->
+  <button id="enterAR" class="arBtn">📷 Enter AR</button>
+  <div id="toast" class="toast">…</div>
+
   <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
     import { GLTFLoader } from 'https://unpkg.com/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
-    import { ARButton } from 'https://unpkg.com/three@0.152.2/examples/jsm/webxr/ARButton.js';
 
-    // DOM refs
-    const menuFab  = document.getElementById('menuFab');
-    const sheet    = document.getElementById('sheet');
-    const sheetToggle = document.getElementById('sheetToggle');
-    const hint     = document.getElementById('hint');
+    // ---- UI refs ----
     const sel      = document.getElementById('modelSelect');
     const addBtn   = document.getElementById('addBtn');
     const undoBtn  = document.getElementById('undoBtn');
     const clearBtn = document.getElementById('clearBtn');
     const enterAR  = document.getElementById('enterAR');
+    const toastEl  = document.getElementById('toast');
 
-    // Bottom sheet open/close
-    function openSheet(){ sheet.classList.add('open'); }
-    function closeSheet(){ sheet.classList.remove('open'); }
-    menuFab.addEventListener('click', ()=> sheet.classList.toggle('open'));
-    sheetToggle.addEventListener('click', ()=> sheet.classList.toggle('open'));
-
-    // Toast helper
-    function toast(msg, ms=2600){
-      hint.textContent = msg;
-      hint.style.display = 'block';
+    const toast = (msg, ms=2200)=>{
+      toastEl.textContent = msg;
+      toastEl.style.display = 'block';
       clearTimeout(toast._t);
-      toast._t = setTimeout(()=> hint.style.display='none', ms);
-    }
+      toast._t = setTimeout(()=> toastEl.style.display='none', ms);
+    };
 
-    // Three.js setup
+    // ---- Three.js basics (same as the cube test) ----
     const scene = new THREE.Scene();
-    const camera= new THREE.PerspectiveCamera();
+    const camera = new THREE.PerspectiveCamera();
     const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(innerWidth, innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
+    // Lights
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
     const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,3,2);
     scene.add(dir);
 
-    // Reticle for hit test
-    const reticleGeo = new THREE.RingGeometry(0.13, 0.15, 32).rotateX(-Math.PI/2);
-    const reticleMat = new THREE.MeshBasicMaterial({ color: 0x00b2ff });
-    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+    // Reticle (tap target on floor)
+    const ring = new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2);
+    const reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({color:0x00b2ff}));
     reticle.visible = false;
     scene.add(reticle);
 
-    // Session state
-    let currentSession = null;
-    let hitTestSource  = null;
-    let localSpace     = null;
+    // AR session state
+    let session = null, hitTestSource = null, localSpace = null;
 
-    // Catalog & models
+    // Catalog & loading
     const loader = new GLTFLoader();
-    const catalog = [];         // [{label, src, scale?, yOffset?}]
-    let selectedItem = null;    // chosen catalog item
-    const placed = [];          // for undo/clear
-    let toPlace = null;         // pending object to place at reticle
+    const catalog = [];          // [{label, src, scale?, yOffset?}]
+    let selectedItem = null;     // chosen item from catalog
+    let toPlace = null;          // THREE.Object3D queued to place
+    const placed = [];           // track for undo/clear
 
-    // Load catalog (JSON)
+    // ---- Load JSON catalog ----
     async function loadCatalog(){
       try{
-        const res = await fetch('models/models.json', { cache:'no-store' });
-        if(!res.ok) throw new Error('models.json not found');
+        const res = await fetch('models/models.json', {cache:'no-store'});
+        if (!res.ok) throw new Error('models.json missing');
         const data = await res.json();
         sel.innerHTML = '';
         Object.entries(data).forEach(([group, items])=>{
@@ -188,10 +126,10 @@
           selectedItem = catalog[0];
           sel.value = selectedItem.src;
         } else {
-          sel.innerHTML = '<option>No models in catalog</option>';
+          sel.innerHTML = '<option>No models</option>';
         }
       }catch(e){
-        sel.innerHTML = '<option>Failed to load catalog</option>';
+        sel.innerHTML = '<option>Catalog error</option>';
         toast('Could not load models/models.json');
       }
     }
@@ -199,35 +137,34 @@
       selectedItem = catalog.find(x => x.src === sel.value);
     });
 
-    // Queue a model to place
+    // ---- Queue model for placement ----
     addBtn.addEventListener('click', async ()=>{
       if (!selectedItem) return;
-      try {
+      try{
         const gltf = await loader.loadAsync(selectedItem.src);
         const group = new THREE.Group();
         group.add(gltf.scene);
 
-        // Gentle normalization for huge models
+        // Gentle normalization for huge assets (max ~5m)
         const box = new THREE.Box3().setFromObject(group);
-        const size = new THREE.Vector3(); box.getSize(size);
-        const maxDim = Math.max(size.x, size.y, size.z);
+        const sz = new THREE.Vector3(); box.getSize(sz);
+        const maxDim = Math.max(sz.x, sz.y, sz.z);
         if (maxDim > 5) group.scale.setScalar(5 / maxDim);
 
-        // Per-model scale / vertical offset from JSON (optional)
-        if (selectedItem.scale && Number.isFinite(selectedItem.scale)) {
+        // Per-model tweaks from JSON
+        if (Number.isFinite(selectedItem.scale)) {
           group.scale.multiplyScalar(selectedItem.scale);
         }
         group.userData.yOffset = Number.isFinite(selectedItem.yOffset) ? selectedItem.yOffset : 0;
 
         toPlace = group;
-        toast('Move phone to scan; tap on floor to place');
-        closeSheet(); // give more camera space
-      } catch (e) {
+        toast('Move phone to scan; tap floor to place');
+      }catch(e){
         toast('Failed to load: ' + selectedItem.src);
       }
     });
 
-    // Undo / Clear
+    // ---- Undo / Clear ----
     function disposeObj(obj){
       obj.traverse(o=>{
         if (o.geometry) o.geometry.dispose();
@@ -245,74 +182,47 @@
       while (placed.length){ const o = placed.pop(); scene.remove(o); disposeObj(o); }
     });
 
-    // AR support checks
-    async function checkARSupport(){
-      if (!window.isSecureContext){
-        enterAR.disabled = true; enterAR.textContent = 'HTTPS required';
-        toast('Open over HTTPS (GitHub Pages is HTTPS)');
-        return false;
-      }
-      if (!('xr' in navigator)){
-        enterAR.disabled = true; enterAR.textContent = 'WebXR not available';
-        toast('Use Android + Chrome with ARCore installed');
-        return false;
-      }
+    // ---- Support checks (same logic as test) ----
+    async function checkAR(){
+      if (!isSecureContext){ enterAR.disabled=true; enterAR.textContent='HTTPS required'; toast('Open over HTTPS'); return false; }
+      if (!('xr' in navigator)){ enterAR.disabled=true; enterAR.textContent='WebXR unavailable'; toast('Use Android + Chrome with ARCore'); return false; }
       const ok = await navigator.xr.isSessionSupported?.('immersive-ar');
-      if (!ok){
-        enterAR.disabled = true; enterAR.textContent = 'AR not supported';
-        toast('Update Chrome & Google Play Services for AR');
-        return false;
-      }
-      enterAR.disabled = false; enterAR.textContent = '📷 Enter AR';
-      return true;
+      enterAR.disabled = !ok;
+      enterAR.textContent = ok ? '📷 Enter AR' : 'AR not supported';
+      return ok;
     }
 
-    // Start AR session
+    // ---- Start AR (exactly like the test, plus dom-overlay optional) ----
     enterAR.addEventListener('click', async ()=>{
       try{
-        const supported = await checkARSupport();
-        if (!supported) return;
+        const ok = await checkAR(); if (!ok) return;
 
-        // Hidden ARButton to set up WebXR layers properly
-        const btn = ARButton.createButton(renderer, {
+        session = await navigator.xr.requestSession('immersive-ar', {
           requiredFeatures:['hit-test'],
           optionalFeatures:['dom-overlay'],
-          domOverlay:{ root: document.body }
+          domOverlay:{ root: document.body } // keep buttons visible
         });
-        btn.style.display='none';
-
-        const sessionInit = {
-          requiredFeatures:['hit-test'],
-          optionalFeatures:['dom-overlay'],
-          domOverlay:{ root: document.body }
-        };
-        currentSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
-
         renderer.xr.setReferenceSpaceType('local');
-        await renderer.xr.setSession(currentSession);
+        await renderer.xr.setSession(session);
 
-        const viewerSpace = await currentSession.requestReferenceSpace('viewer');
-        hitTestSource = await currentSession.requestHitTestSource({ space: viewerSpace });
-        localSpace = await currentSession.requestReferenceSpace('local');
+        const viewerSpace = await session.requestReferenceSpace('viewer');
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+        localSpace = await session.requestReferenceSpace('local');
 
         toast('Move phone to scan; tap to place');
-        // keep controls available inside AR
-        openSheet();
-
         renderer.domElement.addEventListener('touchend', onTouchPlace);
 
-        currentSession.addEventListener('end', ()=>{
-          currentSession = null; hitTestSource = null; localSpace = null;
-          reticle.visible = false; hint.style.display='none';
+        session.addEventListener('end', ()=>{
+          session = null; hitTestSource = null; localSpace = null;
+          reticle.visible = false; toastEl.style.display='none';
           renderer.domElement.removeEventListener('touchend', onTouchPlace);
-          openSheet(); // show controls again outside AR
         });
       }catch(e){
         toast('AR failed: ' + (e?.message || e));
       }
     });
 
-    // Tap to place object at reticle
+    // ---- Tap to place queued model at reticle ----
     function onTouchPlace(){
       if (!reticle.visible || !toPlace) return;
       const clone = toPlace.clone(true);
@@ -323,7 +233,7 @@
       placed.push(clone);
     }
 
-    // Animation + hit test
+    // ---- Animation + hit-test (same as test) ----
     renderer.setAnimationLoop((t, frame)=>{
       if (frame && hitTestSource && localSpace){
         const hits = frame.getHitTestResults(hitTestSource);
@@ -331,8 +241,6 @@
           const pose = hits[0].getPose(localSpace);
           reticle.visible = true;
           reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-          const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
-          reticle.quaternion.setFromRotationMatrix(m);
         }else{
           reticle.visible = false;
         }
@@ -340,15 +248,13 @@
       renderer.render(scene, camera);
     });
 
-    // Resize
-    window.addEventListener('resize', ()=>{
-      renderer.setSize(window.innerWidth, window.innerHeight);
+    addEventListener('resize', ()=>{
+      renderer.setSize(innerWidth, innerHeight);
     });
 
-    // Init
+    // ---- Init ----
     await loadCatalog();
-    await checkARSupport();
-    openSheet(); // open by default on load
+    await checkAR();
   </script>
 </body>
 </html>
