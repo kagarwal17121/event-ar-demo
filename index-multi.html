@@ -42,6 +42,11 @@
 import * as THREE from './lib/three/build/three.module.js';
 import { GLTFLoader }  from './lib/three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
+const draco = new DRACOLoader();
+draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/'); // <-- folder containing the 3 files
+draco.setDecoderConfig({ type: 'wasm' });
+draco.setWorkerLimit(1);
+gltfLoader.setDRACOLoader(draco); // same gltfLoader used for preview + AR
 
 /* ----------------- tiny logger ----------------- */
 const logEl = document.getElementById('log');
