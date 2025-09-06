@@ -27,12 +27,28 @@
     <button id="loadBtn">Add</button>
   </div>
   <div id="status">boot…</div>
+  <script>
+  // Show uncaught errors in the status bar
+  (function () {
+    const s = document.getElementById('status');
+    window.addEventListener('error', e => s && (s.textContent = 'Error: ' + e.message));
+    window.addEventListener('unhandledrejection', e => s && (s.textContent = 'Error: ' + (e.reason?.message || e.reason)));
+  })();
+</script>
   <div id="stage"></div>
   <button id="enterAR">📷 Enter AR</button>
 
+  <!-- map bare specifier "three" to your local file -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three/build/three.module.js"
+  }
+}
+</script>
   <script type="module">
     // --- Local three.js imports
-    import * as THREE from './lib/three/build/three.module.js';
+    import * as THREE from 'three'; // <-- now resolved by the import map
     import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
     import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
 
@@ -195,3 +211,4 @@
   </script>
 </body>
 </html>
+
