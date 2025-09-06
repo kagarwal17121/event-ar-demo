@@ -20,7 +20,7 @@
     .diag small{opacity:.8}
   </style>
 
-  <!-- Import map so example loaders can `import ... from 'three'` locally -->
+  <!-- Import map: point "three" to your LOCAL file -->
   <script type="importmap">
   {
     "imports": {
@@ -48,7 +48,7 @@
     import * as THREE from 'three';
     import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
 
-    // ---- UI refs ----
+    // UI refs
     const sel      = document.getElementById('modelSelect');
     const addBtn   = document.getElementById('addBtn');
     const undoBtn  = document.getElementById('undoBtn');
@@ -65,7 +65,7 @@
       toast._t = setTimeout(()=> toastEl.style.display='none', ms);
     };
 
-    // ---- Three.js basics ----
+    // Three.js basics
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera();
     const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
@@ -78,6 +78,7 @@
     const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,3,2);
     scene.add(dir);
 
+    // Reticle
     const ring = new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2);
     const reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({color:0x00b2ff}));
     reticle.visible = false;
@@ -86,19 +87,19 @@
     // AR session state
     let session = null, hitTestSource = null, localSpace = null;
 
-    // Catalog state
+    // Catalog / loader
     const loader = new GLTFLoader();
-    const catalog = [];          // [{label, src, scale?, yOffset?}]
+    const catalog = [];               // [{label, src, scale?, yOffset?}]
     let selectedItem = null;
     let toPlace = null;
     const placed = [];
 
-    // ---- Load JSON catalog (cache-bust) ----
+    // Load catalog (cache-bust)
     async function loadCatalog(){
       try{
         const url = new URL('./models/models.json', location.href);
         url.searchParams.set('v', Date.now().toString());
-        const res = await fetch(url.toString(), { cache:'no-store' });
+        const res = await fetch(url, { cache:'no-store' });
         if (!res.ok) throw new Error(`models.json HTTP ${res.status}`);
         const data = await res.json();
 
@@ -130,7 +131,7 @@
     }
     sel.addEventListener('change', ()=>{ selectedItem = catalog.find(x => x.src === sel.value); });
 
-    // ---- Queue model for placement ----
+    // Add → queue model for placement
     addBtn.addEventListener('click', async ()=>{
       if (!selectedItem){ toast('Choose a model first'); return; }
       try{
@@ -139,6 +140,7 @@
         const group = new THREE.Group();
         group.add(gltf.scene);
 
+        // normalize huge assets (~5m max dimension)
         const box = new THREE.Box3().setFromObject(group);
         const sz = new THREE.Vector3(); box.getSize(sz);
         const maxDim = Math.max(sz.x, sz.y, sz.z);
@@ -156,7 +158,7 @@
       }
     });
 
-    // ---- Undo / Clear ----
+    // Undo / Clear
     function disposeObj(obj){
       obj.traverse(o=>{
         if (o.geometry) o.geometry.dispose();
@@ -175,7 +177,7 @@
       log('cleared ✔');
     });
 
-    // ---- Support checks (same as your cube test) ----
+    // Support checks
     async function checkAR(){
       if (!isSecureContext){ enterAR.disabled=true; enterAR.textContent='HTTPS required'; log('not secure'); toast('Open over HTTPS'); return false; }
       if (!('xr' in navigator)){ enterAR.disabled=true; enterAR.textContent='WebXR unavailable'; log('navigator.xr missing'); toast('Use Android + Chrome with ARCore'); return false; }
@@ -186,7 +188,7 @@
       return ok;
     }
 
-    // ---- Start AR session ----
+    // Start AR session
     enterAR.addEventListener('click', async ()=>{
       try{
         const ok = await checkAR(); if (!ok) return;
