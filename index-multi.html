@@ -1,75 +1,70 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Event AR – Queue + Edit</title>
-  <style>
-    :root { color-scheme: dark; }
-    html, body { height:100%; }
-    body { margin:0; background:#0b0b0f; color:#e6e6eb; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    #status { position:fixed; top:0; left:0; right:0; height:28px; padding:4px 10px; font:12px/20px ui-monospace,Menlo,Consolas,monospace; color:#ddd; background:rgba(0,0,0,.55); z-index:999; white-space:nowrap; overflow:auto; }
-    #ui { position:fixed; inset:0 auto auto 0; width:100%; padding:12px; background:linear-gradient(180deg, rgba(0,0,0,.7) 0, rgba(0,0,0,0) 120px); z-index:5; }
-    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    label { opacity:.85; }
-    select, button { height:44px; border-radius:12px; border:1px solid #2a2a35; background:#17171f; color:#fff; padding:0 12px; font-size:16px; }
-    button.primary { background:#2b6cff; border-color:#2b6cff; }
-    button.ghost { background:#11131a; }
-    button:disabled { opacity:.5; }
-    #hint { position:fixed; left:50%; bottom:100px; transform:translateX(-50%); background:rgba(0,0,0,.55); padding:10px 14px; border-radius:12px; font-size:14px; display:none; z-index:4; }
-    #enter { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:4; }
-    #editHud { display:none; position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:6; gap:10px; }
-    canvas { display:block; width:100vw; height:100vh; touch-action:none; } /* allow pinch/twist gestures */
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Event AR – Queue + Edit (fixed)</title>
+<style>
+  :root{color-scheme:dark}
+  html,body{height:100%} body{margin:0;background:#0b0b0f;color:#e6e6eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  #status{position:fixed;top:0;left:0;right:0;height:28px;padding:4px 10px;font:12px/20px ui-monospace,Menlo,Consolas,monospace;color:#ddd;background:rgba(0,0,0,.55);z-index:999;white-space:nowrap;overflow:auto}
+  #ui{position:fixed;inset:0 auto auto 0;width:100%;padding:12px;background:linear-gradient(180deg,rgba(0,0,0,.7) 0,rgba(0,0,0,0) 120px);z-index:5}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  select,button{height:44px;border-radius:12px;border:1px solid #2a2a35;background:#17171f;color:#fff;padding:0 12px;font-size:16px}
+  button.primary{background:#2b6cff;border-color:#2b6cff}
+  button.ghost{background:#11131a}
+  button.small{height:36px;padding:0 10px;font-size:14px}
+  button:disabled{opacity:.5}
+  #hint{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:rgba(0,0,0,.55);padding:10px 14px;border-radius:12px;font-size:14px;display:none;z-index:4}
+  #enter{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:4}
+  #editHud{display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:6;gap:8px;align-items:center}
+  #gestureHint{background:rgba(0,0,0,.55);padding:8px 12px;border-radius:12px;font-size:14px}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none} /* allow pinch/twist */
+</style>
 
-  <!-- Import map so 'three' resolves to your local file -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "./lib/three/build/three.module.js",
-      "three/addons/": "./lib/three/examples/jsm/"
-    }
+<!-- Local import map -->
+<script type="importmap">
+{
+  "imports":{
+    "three":"./lib/three/build/three.module.js",
+    "three/addons/":"./lib/three/examples/jsm/"
   }
-  </script>
+}
+</script>
 </head>
 <body>
   <div id="status">boot…</div>
 
-  <!-- App UI -->
   <div id="ui">
     <div class="row" style="margin-bottom:10px;">
-      <label for="modelSel">Model</label>
+      <label for="modelSel" style="opacity:.85">Model</label>
       <select id="modelSel"><option>Loading…</option></select>
       <button id="btnQueue" class="primary">+ Add to queue</button>
       <button id="btnPlace" class="ghost">Place now</button>
-      <button id="btnUndo" class="ghost">↶ Undo</button>
+      <button id="btnUndo"  class="ghost">↶ Undo</button>
       <button id="btnClear" class="ghost">🗑 Clear</button>
     </div>
-    <div class="row">
-      <div id="qInfo" style="opacity:.8;">Queue: 0</div>
-    </div>
+    <div class="row"><div id="qInfo" style="opacity:.8;">Queue: 0</div></div>
   </div>
 
-  <!-- AR hint -->
   <div id="hint">Tap to place next queued model</div>
 
-  <!-- Edit HUD -->
   <div id="editHud">
     <button id="btnDone" class="primary">✅ Done</button>
-    <div id="gestureHint" style="background:rgba(0,0,0,.55); padding:8px 12px; border-radius:12px; font-size:14px;">
-      Pinch to scale · twist to rotate
-    </div>
+    <button id="rotL" class="small ghost">◀ Rotate</button>
+    <button id="rotR" class="small ghost">Rotate ▶</button>
+    <button id="sMinus" class="small ghost">Scale −</button>
+    <button id="sPlus" class="small ghost">Scale +</button>
+    <div id="gestureHint">Pinch = scale · twist = rotate</div>
   </div>
 
-  <!-- AR enter button -->
-  <button id="enter" class="primary"><span>📷 Enter AR</span></button>
+  <button id="enter" class="primary">📷 Enter AR</button>
 
-  <!-- Show uncaught errors in the status bar (no more silent 'boot…') -->
   <script>
-    (function () {
-      const s = document.getElementById('status');
-      window.addEventListener('error', e => s && (s.textContent = 'Error: ' + e.message));
-      window.addEventListener('unhandledrejection', e => s && (s.textContent = 'Error: ' + (e.reason?.message || e.reason)));
+    (function(){
+      const s=document.getElementById('status');
+      addEventListener('error', e=> s.textContent='Error: '+e.message);
+      addEventListener('unhandledrejection', e=> s.textContent='Error: '+(e.reason?.message||e.reason));
     })();
   </script>
 
@@ -78,7 +73,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-    // ========= UI elements =========
+    // UI
     const statusEl = document.getElementById('status');
     const modelSel = document.getElementById('modelSel');
     const btnQueue = document.getElementById('btnQueue');
@@ -90,311 +85,203 @@
     const enterBtn = document.getElementById('enter');
     const editHud  = document.getElementById('editHud');
     const btnDone  = document.getElementById('btnDone');
+    const rotL     = document.getElementById('rotL');
+    const rotR     = document.getElementById('rotR');
+    const sMinus   = document.getElementById('sMinus');
+    const sPlus    = document.getElementById('sPlus');
 
-    const log = (m)=>{ statusEl.textContent = m; console.log(m); };
+    const log = m => { statusEl.textContent = m; console.log(m); };
 
-    // ========= Catalog / State =========
+    // Catalog
     const CATALOG_URL = './models/models.json';
-    /** @type {{name:string,url:string,thumbnail?:string,scale?:number,rotation?:[number,number,number],position?:[number,number,number],shadow?:boolean}[]} */
     let catalog = [];
-    const cache = new Map(); // url -> THREE.Group (scene) for cloning
-    const queue = [];        // indices to place
-    const placed = [];       // stack of placed THREE.Object3D
+    const cache = new Map();
+    const queue = [];
+    const placed = [];
 
-    // Edit mode state
-    let selected = null;     // currently edited object
-    let editing  = false;    // flag
-
-    // Gesture state for two-finger pinch/twist
-    let gTwo = null;         // { startDist, startAngle, startScale, startRotY }
+    // Edit state
+    let selected = null, editing = false;
+    let gTwo = null;
 
     function updateQueueInfo(){
       qInfo.textContent = `Queue: ${queue.length}`;
-      // Show hint only if in AR, not editing, and there are items
-      hintEl.style.display = (renderer.xr.isPresenting && !editing && queue.length) ? 'block' : 'none';
+      hintEl.style.display = (renderer.xr.isPresenting && !editing && queue.length>0) ? 'block' : 'none';
     }
 
-    // ========= Three.js / Renderer =========
-    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'high-performance' });
+    // Three / scene
+    const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(innerWidth, innerHeight);
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 100);
-    camera.position.set(0, 1.6, 3);
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
+    camera.position.set(0,1.6,3);
 
-    // Lighting (also useful in AR)
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.8);
-    scene.add(hemi);
-    const dir  = new THREE.DirectionalLight(0xffffff, 1.2);
-    dir.position.set(3, 5, 2);
-    dir.castShadow = true;
-    scene.add(dir);
+    const hemi = new THREE.HemisphereLight(0xffffff,0x444466,0.8); scene.add(hemi);
+    const dir  = new THREE.DirectionalLight(0xffffff,1.2); dir.position.set(3,5,2); dir.castShadow=true; scene.add(dir);
 
-    // Reticle (AR plane indicator)
-    const reticleGeo = new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2);
-    const reticleMat = new THREE.MeshBasicMaterial({ color: 0x4da3ff });
-    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
-    reticle.visible = false;
-    scene.add(reticle);
+    const reticleGeo = new THREE.RingGeometry(0.12,0.15,32).rotateX(-Math.PI/2);
+    const reticleMat = new THREE.MeshBasicMaterial({color:0x4da3ff});
+    const reticle = new THREE.Mesh(reticleGeo, reticleMat); reticle.visible=false; scene.add(reticle);
 
-    // ========= Loaders =========
+    // Loaders
     const draco = new DRACOLoader();
-    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/'); // must contain wasm + js files
-    const gltf = new GLTFLoader();
-    gltf.setDRACOLoader(draco);
+    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+    const gltf = new GLTFLoader(); gltf.setDRACOLoader(draco);
 
-    // ========= Helpers =========
-    function enableShadows(obj, on){
-      obj.traverse(n=>{
-        if (n.isMesh){
-          n.castShadow = on;
-          n.receiveShadow = on;
-        }
-      });
-    }
-
+    // Helpers
+    function enableShadows(obj,on){ obj.traverse(n=>{ if(n.isMesh){ n.castShadow=on; n.receiveShadow=on; } }); }
     async function preloadModel(idx){
-      const item = catalog[idx];
-      if (!item) throw new Error('invalid catalog index');
+      const item = catalog[idx]; if (!item) throw new Error('invalid index');
       if (cache.has(item.url)) return cache.get(item.url);
       const gl = await gltf.loadAsync(item.url);
-      cache.set(item.url, gl.scene);
-      return gl.scene;
+      cache.set(item.url, gl.scene); return gl.scene;
     }
-
     function cloneFromCache(idx){
-      const item = catalog[idx];
-      const src = cache.get(item.url);
-      const obj = src.clone(true);
-      // default transforms
-      const s = (item.scale ?? 1);
-      obj.scale.setScalar(s);
-      if (item.rotation) obj.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2]);
-      if (item.position) obj.position.set(item.position[0], item.position[1], item.position[2]);
-      enableShadows(obj, item.shadow !== false);
+      const it = catalog[idx], src = cache.get(it.url), obj = src.clone(true);
+      const s = it.scale ?? 1; obj.scale.setScalar(s);
+      if (it.rotation) obj.rotation.set(...it.rotation);
+      if (it.position) obj.position.set(...it.position);
+      enableShadows(obj, it.shadow !== false);
       return obj;
     }
-
-    function angleBetween(p1, p2) { return Math.atan2(p2.y - p1.y, p2.x - p1.x); }
-    function dist(p1, p2) { const dx = p2.x - p1.x, dy = p2.y - p1.y; return Math.hypot(dx, dy); }
-    function toPt(t) { return { x: t.clientX, y: t.clientY }; }
+    const dist=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
+    const ang=(a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
 
     function enterEdit(obj){
-      selected = obj;
-      editing  = true;
-      editHud.style.display = 'flex';
-      hintEl.style.display = 'none';
+      selected=obj; editing=true; editHud.style.display='flex'; hintEl.style.display='none';
       log('Edit: pinch to scale, twist to rotate');
     }
-    function exitEdit(){
-      editing  = false;
-      selected = null;
-      editHud.style.display = 'none';
-      updateQueueInfo();
-    }
+    function exitEdit(){ editing=false; selected=null; editHud.style.display='none'; updateQueueInfo(); }
 
-    // ========= Populate catalog from JSON =========
+    // Catalog load
     (async()=>{
       try{
-        const res = await fetch(CATALOG_URL, { cache:'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        catalog = await res.json();
-        modelSel.innerHTML = '';
-        catalog.forEach((it,i)=>{
-          const opt = document.createElement('option');
-          opt.value = String(i);
-          opt.textContent = it.name || `Model ${i+1}`;
-          modelSel.appendChild(opt);
-        });
+        const r=await fetch(CATALOG_URL,{cache:'no-store'}); if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        catalog=await r.json();
+        modelSel.innerHTML='';
+        catalog.forEach((it,i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=it.name||`Model ${i+1}`; modelSel.appendChild(o);});
         log(`OK — loaded ${catalog.length} items from ${CATALOG_URL}`);
-      }catch(err){
-        modelSel.innerHTML = `<option>Failed to load catalog</option>`;
-        log(`Failed to load ${CATALOG_URL}: ${err.message}`);
+      }catch(e){
+        modelSel.innerHTML='<option>Failed to load catalog</option>';
+        log(`Failed to load catalog: ${e.message}`);
       }
     })();
 
-    // ========= UI actions =========
-    btnQueue.onclick = async ()=>{
-      const idx = Number(modelSel.value);
-      if (Number.isNaN(idx)) return;
-      try{
-        await preloadModel(idx); // so placement is instant in AR
-        queue.push(idx);
-        updateQueueInfo();
-        log(`Queued: ${catalog[idx].name}`);
-      }catch(err){
-        log(`preload error: ${err.message}`);
-        alert(`Couldn't preload: ${catalog[idx]?.name || 'model'}`);
-      }
+    // UI actions
+    btnQueue.onclick = async()=>{
+      const idx=Number(modelSel.value); if(Number.isNaN(idx)) return;
+      try{ await preloadModel(idx); queue.push(idx); updateQueueInfo(); log(`Queued: ${catalog[idx].name}`);}catch(e){ log('preload error: '+e.message); alert(`Couldn't preload ${catalog[idx]?.name||'model'}`); }
     };
-
-    btnPlace.onclick = async ()=>{
-      const idx = Number(modelSel.value);
-      if (Number.isNaN(idx)) return;
-      try{
-        await preloadModel(idx);
-        queue.unshift(idx);          // arm it to be placed next
-        hintEl.style.display = 'none'; // avoid mixed prompts
-        updateQueueInfo();
-        if (!renderer.xr.isPresenting) alert('Enter AR, then tap to place.');
-        log(`Armed placement for: ${catalog[idx].name}`);
-      }catch(err){
-        log(`preload error: ${err.message}`);
-      }
+    btnPlace.onclick = async()=>{
+      const idx=Number(modelSel.value); if(Number.isNaN(idx)) return;
+      try{ await preloadModel(idx); queue.unshift(idx); updateQueueInfo(); log(`Armed placement: ${catalog[idx].name}`);}catch(e){ log('preload error: '+e.message); }
     };
-
     btnUndo.onclick = ()=>{
-      const last = placed.pop();
-      if (last){
-        last.parent?.remove(last);
-        log('Undo: removed last placed');
-      }
+      const last=placed.pop(); if(last){ last.parent?.remove(last); log('Undo: removed last'); }
     };
-
     btnClear.onclick = ()=>{
-      while (placed.length){
-        const o = placed.pop();
-        o.parent?.remove(o);
-      }
-      updateQueueInfo();
-      log('Cleared placed objects');
+      while(placed.length){ placed.pop().parent?.remove(placed[placed.length-1]); }
+      log('Cleared scene'); updateQueueInfo();
     };
+    btnDone.onclick = ()=> exitEdit();
 
-    btnDone.onclick = ()=> {
-      exitEdit();
-      log('Edit finished');
-    };
+    // Edit fallback buttons
+    rotL.onclick = ()=>{ if(selected) selected.rotation.y -= Math.PI/18; };
+    rotR.onclick = ()=>{ if(selected) selected.rotation.y += Math.PI/18; };
+    sMinus.onclick= ()=>{ if(selected){ const s=Math.max(0.1, selected.scale.x*0.9); selected.scale.setScalar(s);} };
+    sPlus.onclick = ()=>{ if(selected){ const s=Math.min(10,  selected.scale.x*1.1); selected.scale.setScalar(s);} };
 
-    // ========= AR session & loop =========
-    let isAR = false;
-    let xrRefSpace = null;
-    let hitTestSource = null;
+    // AR session
+    let xrRefSpace=null, hitTestSource=null;
 
-    enterBtn.onclick = async ()=>{
-      if (!navigator.xr){
-        alert('WebXR not available on this device/browser.');
-        return;
-      }
-      const supported = await navigator.xr.isSessionSupported('immersive-ar');
-      if (!supported){ alert('immersive-ar not supported'); return; }
+    enterBtn.onclick = async()=>{
+      if(!navigator.xr){ alert('WebXR not available'); return; }
+      if(!await navigator.xr.isSessionSupported('immersive-ar')){ alert('immersive-ar not supported'); return; }
 
-      renderer.xr.enabled = true;
-      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test','local-floor'] });
+      renderer.xr.enabled=true;
+      const session = await navigator.xr.requestSession('immersive-ar',{
+        requiredFeatures:['hit-test','local-floor'],
+        optionalFeatures:['dom-overlay'],
+        domOverlay:{ root: document.body } // IMPORTANT: allows page to receive touch events
+      });
       renderer.xr.setSession(session);
-      isAR = true;
-      updateQueueInfo();
-      log('AR started — tap to place next in queue');
 
       xrRefSpace = await session.requestReferenceSpace('local-floor');
-      const viewerSpace = await session.requestReferenceSpace('viewer');
-      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+      const viewer   = await session.requestReferenceSpace('viewer');
+      hitTestSource  = await session.requestHitTestSource({ space: viewer });
 
       session.addEventListener('end', ()=>{
-        isAR = false;
-        hitTestSource = null;
-        xrRefSpace = null;
-        reticle.visible = false;
-        editing = false;
-        selected = null;
-        editHud.style.display = 'none';
-        hintEl.style.display = 'none';
-        log('AR session ended');
+        hitTestSource=null; xrRefSpace=null; reticle.visible=false; editing=false; selected=null;
+        editHud.style.display='none'; hintEl.style.display='none'; log('AR session ended');
       });
 
-      // Tap to place next queued object at the reticle
+      // Place on tap — but ignore if editing or no queue
       session.addEventListener('select', ()=>{
-        if (!reticle.visible) return;
-        if (!queue.length){
-          log('Nothing in queue to place');
-          return;
-        }
-        const idx = queue.shift();
-        const obj = cloneFromCache(idx);
+        if (editing || !queue.length || !reticle.visible) return;
+        const idx=queue.shift();
+        const obj=cloneFromCache(idx);
         obj.position.copy(reticle.position);
         obj.quaternion.copy(reticle.quaternion);
-        scene.add(obj);
-        placed.push(obj);
-        log(`Placed: ${catalog[idx].name} — remaining in queue: ${queue.length}`);
-
-        // Immediately enter edit mode for this object
+        scene.add(obj); placed.push(obj);
+        log(`Placed: ${catalog[idx].name}`);
         enterEdit(obj);
         updateQueueInfo();
       });
 
       // XR render loop
       renderer.setAnimationLoop((t, frame)=>{
-        if (!frame) return;
-        if (hitTestSource && xrRefSpace){
+        if(frame && hitTestSource && xrRefSpace){
           const hits = frame.getHitTestResults(hitTestSource);
-          if (hits.length){
+          const canShow = (!editing && queue.length>0 && hits.length>0);
+          if (canShow){
             const pose = hits[0].getPose(xrRefSpace);
-            reticle.visible = true;
             reticle.matrix.fromArray(pose.transform.matrix);
             reticle.position.setFromMatrixPosition(reticle.matrix);
             reticle.quaternion.setFromRotationMatrix(reticle.matrix);
-          } else {
-            reticle.visible = false;
           }
+          reticle.visible = canShow; // hide while editing or when queue empty
         }
         renderer.render(scene, camera);
       });
+
+      updateQueueInfo();
+      log('AR started — tap to place next in queue');
     };
 
-    // ========= Touch gestures for Edit Mode =========
-    renderer.domElement.addEventListener('touchstart', (e) => {
-      if (!editing || !selected) return;
-      if (e.touches.length === 2) {
-        const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        const t2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
-        gTwo = {
-          startDist: dist(t1, t2),
-          startAngle: angleBetween(t1, t2),
-          startScale: selected.scale.x,
-          startRotY: selected.rotation.y
-        };
+    // Gestures (now work thanks to dom-overlay)
+    function toPt(t){ return ({x:t.clientX,y:t.clientY}); }
+    renderer.domElement.addEventListener('touchstart',(e)=>{
+      if(!editing || !selected) return;
+      if(e.touches.length===2){
+        const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
+        gTwo={ startDist: dist(p1,p2), startAng: ang(p1,p2), startScale: selected.scale.x, startRotY: selected.rotation.y };
       }
-    }, { passive: true });
+    },{passive:true});
 
-    renderer.domElement.addEventListener('touchmove', (e) => {
-      if (!editing || !selected || !gTwo || e.touches.length !== 2) return;
-      const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      const t2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
-      const curDist = dist(t1, t2);
-      const curAngle = angleBetween(t1, t2);
-
-      // Scale (clamped)
-      let s = gTwo.startScale * (curDist / gTwo.startDist);
-      s = Math.min(Math.max(s, 0.1), 10);
+    renderer.domElement.addEventListener('touchmove',(e)=>{
+      if(!editing || !selected || !gTwo || e.touches.length!==2) return;
+      const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
+      // scale
+      let s = gTwo.startScale * (dist(p1,p2)/gTwo.startDist);
+      s = Math.min(Math.max(s,0.1),10);
       selected.scale.setScalar(s);
-
-      // Rotate around Y
-      const delta = curAngle - gTwo.startAngle;
+      // rotate
+      const delta = ang(p1,p2) - gTwo.startAng;
       selected.rotation.y = gTwo.startRotY + delta;
-    }, { passive: true });
+    },{passive:true});
 
-    renderer.domElement.addEventListener('touchend', (e) => {
-      if (editing && (!gTwo || e.touches.length < 2)) gTwo = null;
-    }, { passive: true });
+    renderer.domElement.addEventListener('touchend',()=>{ if(editing) gTwo=null; },{passive:true});
 
-    // ========= Fallback (non-AR) render loop =========
-    function loop(){
-      if (!renderer.xr.isPresenting){
-        renderer.render(scene, camera);
-      }
-      requestAnimationFrame(loop);
-    }
-    loop();
+    // Non-AR loop
+    (function loop(){ if(!renderer.xr.isPresenting) renderer.render(scene,camera); requestAnimationFrame(loop);} )();
 
-    // ========= Resize =========
-    addEventListener('resize', ()=>{
-      const w = innerWidth, h = innerHeight;
-      renderer.setSize(w,h);
-      camera.aspect = w/h; camera.updateProjectionMatrix();
+    addEventListener('resize',()=>{
+      renderer.setSize(innerWidth,innerHeight);
+      camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
     });
 
-    // Initial message
     log('Catalog loading…');
   </script>
 </body>
