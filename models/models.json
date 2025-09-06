@@ -1,5 +1,47 @@
 [
-  { "name": "Podium", "url": "./models/podium.glb" },
-  { "name": "Concert Stage", "url": "./models/concert-stage.glb" },
-  { "name": "Chair", "url": "./models/chair.glb" }
+  {
+    "name": "Podium",
+    "url": "./models/podium.glb",
+    "thumbnail": "./models/thumbs/podium.jpg",
+    "scale": 1.0,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Concert Stage",
+    "url": "./models/concert-stage.glb",
+    "thumbnail": "./models/thumbs/concert-stage.jpg",
+    "scale": 1.0,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Chair",
+    "url": "./models/chair.glb",
+    "thumbnail": "./models/thumbs/chair.jpg",
+    "scale": 1.0,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Couch",
+    "url": "./models/couch.glb",
+    "thumbnail": "./models/thumbs/couch.jpg",
+    "scale": 1.0,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Chaise",
+    "url": "./models/chaisehighpoly.glb",
+    "thumbnail": "./models/thumbs/chaise.jpg",
+    "scale": 1.0,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  }
 ]
