@@ -2,213 +2,303 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-  />
-  <title>AR Catalog — Multi Model</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>AR Multi – Queue & Tap-to-Place</title>
   <style>
     :root { color-scheme: dark; }
-    body, html { margin:0; height:100%; background:#0b0b0c; color:#e8e8ea; font-family: system-ui, sans-serif; }
-    #topbar { position:fixed; inset:0 0 auto 0; padding:10px 12px; background:#111; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center; z-index:2; }
-    label { opacity:.9; }
-    select { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a2a2e; background:#161618; color:#e8e8ea; }
-    .btn { padding:12px 16px; border:0; border-radius:12px; }
-    .primary { background:#2d6df6; color:white; font-weight:700; }
-    .muted   { background:#2a2a2e; color:#ddd; }
-    #status { position:fixed; left:8px; right:8px; top:52px; font:12px/1.4 monospace; opacity:.85; z-index:2; }
-    #stage { position:absolute; inset:0; }
-    #enterAR { position:fixed; left:50%; transform:translateX(-50%); bottom:24px; }
-    canvas { display:block; width:100%; height:100%; }
+    body { margin: 0; background:#0b0b0f; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#e6e6eb; }
+    #ui { position:fixed; inset:0 auto auto 0; width:100%; padding:12px; background:linear-gradient(180deg, rgba(0,0,0,.7) 0, rgba(0,0,0,0) 100px); z-index:2; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    select, button { height:44px; border-radius:12px; border:1px solid #2a2a35; background:#17171f; color:#fff; padding:0 12px; font-size:16px; }
+    button.primary { background:#2b6cff; border-color:#2b6cff; }
+    button.ghost { background:#11131a; }
+    button:disabled { opacity:.5; }
+    #status { position:fixed; top:0; left:0; right:0; height:28px; padding:4px 10px; font:12px/20px ui-monospace,Menlo,Consolas,monospace; color:#ddd; background:rgba(0,0,0,.55); z-index:3; overflow:auto; white-space:nowrap; }
+    #hint { position:fixed; left:50%; bottom:100px; transform:translateX(-50%); background:rgba(0,0,0,.55); padding:10px 14px; border-radius:12px; font-size:14px; display:none; }
+    #enter { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:2; }
+    #enter span { pointer-events:none; }
+    canvas { display:block; width:100vw; height:100vh; }
   </style>
+
+  <!-- import map to local files -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./lib/three/build/three.module.js",
+      "three/addons/": "./lib/three/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
-  <div id="topbar">
-    <label for="modelSelect">Model</label>
-    <select id="modelSelect"><option>Loading…</option></select>
-    <button id="addBtn"  class="btn primary">+ Add</button>
-    <button id="undoBtn" class="btn muted">⟲ Undo</button>
-    <button id="clearBtn" class="btn muted">🗑 Clear</button>
-  </div>
   <div id="status">boot…</div>
-  <script>
-  // Show uncaught errors in the status bar
-  (function () {
-    const s = document.getElementById('status');
-    window.addEventListener('error', e => s && (s.textContent = 'Error: ' + e.message));
-    window.addEventListener('unhandledrejection', e => s && (s.textContent = 'Error: ' + (e.reason?.message || e.reason)));
-  })();
-</script>
-  <div id="stage"></div>
-  <button id="enterAR" class="btn primary">📷 Enter AR</button>
 
-  <!-- map bare specifier "three" to your local file -->
-<script type="importmap">
-{
-  "imports": {
-    "three": "./lib/three/build/three.module.js"
-  }
-}
-</script>
+  <div id="ui">
+    <div class="row" style="margin-bottom:10px;">
+      <label for="modelSel" style="opacity:.85;">Model</label>
+      <select id="modelSel"><option>Loading…</option></select>
+      <button id="btnQueue" class="primary">+ Add to queue</button>
+      <button id="btnPlace" class="ghost">Place now</button>
+      <button id="btnUndo" class="ghost">↶ Undo</button>
+      <button id="btnClear" class="ghost">🗑 Clear</button>
+    </div>
+    <div class="row">
+      <div id="qInfo" style="opacity:.8;">Queue: 0</div>
+    </div>
+  </div>
+
+  <div id="hint">Tap to place next queued model</div>
+
+  <button id="enter" class="primary"><span>📷 Enter AR</span></button>
+
   <script type="module">
-    import * as THREE from 'three'; // <-- now resolved by the import map
-    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
-    import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
+    // ---------- UI ----------
     const statusEl = document.getElementById('status');
-    function log(m){ console.log(m); statusEl.textContent = m; }
+    const modelSel = document.getElementById('modelSel');
+    const btnQueue = document.getElementById('btnQueue');
+    const btnPlace = document.getElementById('btnPlace');
+    const btnUndo  = document.getElementById('btnUndo');
+    const btnClear = document.getElementById('btnClear');
+    const qInfo    = document.getElementById('qInfo');
+    const hintEl   = document.getElementById('hint');
+    const enterBtn = document.getElementById('enter');
 
-    // Renderer / scene
-    const stage = document.getElementById('stage');
-    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-    renderer.setPixelRatio(devicePixelRatio);
-    renderer.setSize(innerWidth, innerHeight);
-    stage.appendChild(renderer.domElement);
+    const log = (m)=>{ statusEl.textContent = m; console.log(m); };
+
+    // ---------- Catalog ----------
+    const CATALOG_URL = './models/models.json';
+    /** @type {{name:string,url:string,thumbnail?:string,scale?:number,rotation?:[number,number,number],position?:[number,number,number],shadow?:boolean}[]} */
+    let catalog = [];
+    const cache = new Map(); // url -> GLTF.scene cached
+    const queue = [];        // array of catalog indices queued for placement
+    const placed = [];       // stack of placed THREE.Object3D for undo
+
+    // ---------- Three.js base (non-AR) ----------
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'high-performance' });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
-    camera.position.set(0, 1.2, 2.4);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 100);
+    camera.position.set(0, 1.6, 3);
 
-    scene.add(new THREE.AmbientLight(0xffffff, .7));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(2,4,2);
-    scene.add(sun);
+    // Lights (also used in AR)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.8);
+    scene.add(hemi);
+    const dir  = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(3, 5, 2);
+    dir.castShadow = true;
+    scene.add(dir);
 
-    window.addEventListener('resize', ()=>{
-      camera.aspect = innerWidth/innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-    });
+    // Reticle (AR only)
+    const reticleGeo = new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2);
+    const reticleMat = new THREE.MeshBasicMaterial({ color: 0x4da3ff });
+    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+    reticle.visible = false;
+    scene.add(reticle);
 
-    function tick(){ renderer.render(scene, camera); requestAnimationFrame(tick); }
-    tick();
-
-    // GLTF + DRACO
-    const gltfLoader = new GLTFLoader();
+    // ---------- Loaders ----------
     const draco = new DRACOLoader();
-    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-    draco.setDecoderConfig({ type:'wasm' });
-    gltfLoader.setDRACOLoader(draco);
+    // Point DRACOLoader to your local decoder files folder:
+    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/'); 
+    const gltf = new GLTFLoader();
+    gltf.setDRACOLoader(draco);
 
-    // Catalog
-    const selectEl = document.getElementById('modelSelect');
-    let catalog=[];
-    try{
-      const r = await fetch('./models/models.json');
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      catalog = await r.json();
-      if(!Array.isArray(catalog) && Array.isArray(catalog.models)) catalog = catalog.models;
-      selectEl.innerHTML='';
-      for(const item of catalog){
-        const opt=document.createElement('option');
-        opt.value=item.url; opt.textContent=item.name;
-        selectEl.appendChild(opt);
+    // ---------- Helpers ----------
+    async function preloadModel(idx){
+      const item = catalog[idx];
+      if (!item) throw new Error('bad index');
+      if (cache.has(item.url)) return cache.get(item.url);
+      const gltfObj = await gltf.loadAsync(item.url);
+      cache.set(item.url, gltfObj.scene);
+      return gltfObj.scene;
+    }
+
+    function cloneFromCache(idx){
+      const item = catalog[idx];
+      const src = cache.get(item.url);
+      const obj = src.clone(true);
+      // transforms
+      if (item.scale) obj.scale.setScalar(item.scale);
+      if (item.rotation) obj.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2]);
+      if (item.position) obj.position.set(item.position[0], item.position[1], item.position[2]);
+      enableShadows(obj, item.shadow !== false);
+      return obj;
+    }
+
+    function enableShadows(obj, on){
+      obj.traverse(n=>{
+        if (n.isMesh){
+          n.castShadow = on;
+          n.receiveShadow = on;
+        }
+      });
+    }
+
+    function updateQueueInfo(){
+      qInfo.textContent = `Queue: ${queue.length}`;
+      hintEl.style.display = (isAR && queue.length) ? 'block' : 'none';
+    }
+
+    // ---------- Populate catalog ----------
+    (async()=>{
+      try{
+        const res = await fetch(CATALOG_URL, { cache:'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        catalog = await res.json();
+        modelSel.innerHTML = '';
+        catalog.forEach((it,i)=>{
+          const opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = it.name || `Model ${i+1}`;
+          modelSel.appendChild(opt);
+        });
+        log(`OK — loaded ${catalog.length} items from ${CATALOG_URL}`);
+      }catch(err){
+        modelSel.innerHTML = `<option>Failed to load catalog</option>`;
+        log(`Failed to load ${CATALOG_URL}: ${err.message}`);
       }
-      log(`Catalog loaded ✅ (${catalog.length} items)`);
-    }catch(e){
-      log('Catalog load error: '+e.message);
-      selectEl.innerHTML='<option>Failed to load catalog</option>';
-    }
+    })();
 
-    // Non-AR staging area (lets you preview and stack multiple)
-    const stagingRoot = new THREE.Group();
-    scene.add(stagingRoot);
-    const stack = [];
-
-    async function addModel(url){
-      const abs = new URL(url, location.href).href;
-      log('Loading: '+url);
-      const gltf = await gltfLoader.loadAsync(abs);
-      const obj = gltf.scene;
-      obj.traverse(n=>{ if(n.isMesh){ n.castShadow=true; n.receiveShadow=true; }});
-      // normalize size
-      const box = new THREE.Box3().setFromObject(obj);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const target = 1.2; // ~meterish preview
-      const s = target / Math.max(size.x, size.y, size.z);
-      obj.scale.setScalar(s);
-      // center
-      box.setFromObject(obj);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      obj.position.sub(center);
-
-      stagingRoot.add(obj);
-      stack.push(obj);
-      log('Added ✅  (stack: '+stack.length+')');
-    }
-
-    document.getElementById('addBtn').onclick = () => {
-      const url = selectEl.value;
-      if(url) addModel(url).catch(e=>log('Load error: '+e.message));
-    };
-    document.getElementById('undoBtn').onclick = ()=>{
-      const m = stack.pop();
-      if(m){ m.removeFromParent(); log('Undo ✓ (stack: '+stack.length+')'); }
-    };
-    document.getElementById('clearBtn').onclick = ()=>{
-      while(stack.length){ stack.pop().removeFromParent(); }
-      log('Cleared ✓');
+    // ---------- UI actions ----------
+    btnQueue.onclick = async ()=>{
+      const idx = Number(modelSel.value);
+      if (Number.isNaN(idx)) return;
+      try{
+        // Preload so placing is instant in AR
+        await preloadModel(idx);
+        queue.push(idx);
+        updateQueueInfo();
+        log(`Queued: ${catalog[idx].name}`);
+      }catch(err){
+        log(`preload error: ${err.message}`);
+        alert(`Couldn't preload: ${catalog[idx].name}`);
+      }
     };
 
-    // -------- WebXR: place the whole stagingRoot in AR, then tap to duplicate items
-    const enterBtn = document.getElementById('enterAR');
+    btnPlace.onclick = async ()=>{
+      // Immediate place mode (no queue) — user will tap once to drop this item
+      const idx = Number(modelSel.value);
+      if (Number.isNaN(idx)) return;
+      try{
+        await preloadModel(idx);
+        // Put at front so it's next to place
+        queue.unshift(idx);
+        updateQueueInfo();
+        if (!isAR) alert('Enter AR, then tap to place.');
+        log(`Armed placement for: ${catalog[idx].name}`);
+      }catch(err){
+        log(`preload error: ${err.message}`);
+      }
+    };
 
-    enterBtn.onclick = async () => {
-      if(!navigator.xr){ log('WebXR not available'); return; }
-      const supported = await navigator.xr.isSessionSupported('immersive-ar');
-      if(!supported){ log('immersive-ar not supported'); return; }
+    btnUndo.onclick = ()=>{
+      const last = placed.pop();
+      if (last){
+        last.parent?.remove(last);
+        renderer.xr.isPresenting ? log('Undo: removed last placed') : log('Undo (viewer)');
+      }
+    };
 
-      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test'] });
+    btnClear.onclick = ()=>{
+      while (placed.length){
+        const o = placed.pop();
+        o.parent?.remove(o);
+      }
+      updateQueueInfo();
+      log('Cleared placed objects');
+    };
+
+    // ---------- AR session ----------
+    let isAR = false;
+    let xrRefSpace = null;
+    let hitTestSource = null;
+
+    enterBtn.onclick = async ()=>{
+      if (!navigator.xr){
+        alert('WebXR not available on this device/browser.');
+        return;
+      }
+      const ok = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!ok){ alert('immersive-ar not supported'); return; }
+
       renderer.xr.enabled = true;
-      renderer.xr.setReferenceSpaceType('local');
-      await renderer.xr.setSession(session);
+      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test','local-floor'] });
+      renderer.xr.setSession(session);
+      isAR = true;
+      hintEl.style.display = queue.length ? 'block' : 'none';
+      log('AR started — tap to place next in queue');
 
-      const refSpace = await session.requestReferenceSpace('local');
+      const refSpace = await session.requestReferenceSpace('local-floor');
+      xrRefSpace = refSpace;
       const viewerSpace = await session.requestReferenceSpace('viewer');
       const hitSource = await session.requestHitTestSource({ space: viewerSpace });
+      hitTestSource = hitSource;
 
-      // reticle
-      const retGeo = new THREE.RingGeometry(0.12,0.14,32).rotateX(-Math.PI/2);
-      const retMat = new THREE.MeshBasicMaterial({ color:0x4da3ff });
-      const reticle = new THREE.Mesh(retGeo, retMat); reticle.matrixAutoUpdate=false; reticle.visible=false;
-      scene.add(reticle);
+      session.addEventListener('end', ()=>{
+        isAR = false;
+        hitTestSource = null;
+        xrRefSpace = null;
+        reticle.visible = false;
+        hintEl.style.display = 'none';
+        log('AR session ended');
+      });
 
-      // AR root where clones go
-      const arRoot = new THREE.Group(); scene.add(arRoot);
-
-      session.addEventListener('select', () => {
+      // On tap, place the next item from the queue (if any)
+      session.addEventListener('select', ()=>{
         if (!reticle.visible) return;
-        // clone current staging
-        const clone = stagingRoot.clone(true);
-        clone.position.copy(reticle.position);
-        clone.quaternion.copy(reticle.quaternion);
-        arRoot.add(clone);
+        if (!queue.length){
+          log('Nothing in queue to place');
+          return;
+        }
+        const idx = queue.shift();
+        updateQueueInfo();
+        const obj = cloneFromCache(idx);
+        obj.position.copy(reticle.position);
+        obj.quaternion.copy(reticle.quaternion);
+        scene.add(obj);
+        placed.push(obj);
+        log(`Placed: ${catalog[idx].name} — remaining in queue: ${queue.length}`);
+        hintEl.style.display = queue.length ? 'block' : 'none';
       });
 
       renderer.setAnimationLoop((t, frame)=>{
-        if(frame){
-          const hits = frame.getHitTestResults(hitSource);
-          if(hits.length){
-            const pose = hits[0].getPose(refSpace);
-            reticle.visible = true;
-            reticle.matrix.fromArray(pose.transform.matrix);
-          } else {
-            reticle.visible = false;
-          }
+        if (!frame) return;
+        const hitRes = frame.getHitTestResults(hitTestSource);
+        if (hitRes.length){
+          const pose = hitRes[0].getPose(xrRefSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+          reticle.position.setFromMatrixPosition(reticle.matrix);
+          reticle.quaternion.setFromRotationMatrix(reticle.matrix);
+        } else {
+          reticle.visible = false;
         }
         renderer.render(scene, camera);
       });
-
-      session.addEventListener('end', ()=>{
-        renderer.setAnimationLoop(null);
-        renderer.xr.enabled = false;
-        reticle.removeFromParent();
-        arRoot.removeFromParent();
-        log('AR session ended');
-      });
     };
+
+    // ---------- Fallback render (non-AR) ----------
+    function loop(){
+      if (!renderer.xr.isPresenting){
+        renderer.render(scene, camera);
+      }
+      requestAnimationFrame(loop);
+    }
+    loop();
+
+    // ---------- Resize ----------
+    addEventListener('resize', ()=>{
+      const w = innerWidth, h = innerHeight;
+      renderer.setSize(w,h);
+      camera.aspect = w/h; camera.updateProjectionMatrix();
+    });
+
   </script>
 </body>
 </html>
