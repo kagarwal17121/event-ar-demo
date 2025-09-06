@@ -1,32 +1,36 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>AR Catalog — Multi</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR Multi-Model</title>
+
 <style>
   :root { color-scheme: dark; }
-  html, body { margin:0; height:100%; background:#0b0b0f; font:15px system-ui, -apple-system, Segoe UI, Roboto; color:#eaeaf1;}
-  #hud { position:fixed; inset:0 auto auto 0; width:100%; box-sizing:border-box; padding:10px 12px; display:flex; gap:10px; align-items:center; background:rgba(10,10,12,.85); backdrop-filter:saturate(1.4) blur(6px); }
-  #status { position:fixed; left:0; right:0; top:0; text-align:left; font:12px; color:#9aa0a6; padding:4px 10px; background:#1a1c22; }
-  select, button { height:44px; border-radius:12px; border:1px solid #2a2e36; background:#14161b; color:#fff; padding:0 14px; }
-  select { min-width:210px; }
-  button.primary { background:#2563ff; border-color:#2563ff; }
-  button.ghost { background:#191b22; }
-  button:disabled { opacity:.45; }
-  #right { margin-left:auto; display:flex; gap:8px; align-items:center; }
-  #enter { position:fixed; left:50%; transform:translateX(-50%); bottom:22px; height:56px; border-radius:28px; padding:0 22px; }
-  #reticle { position:fixed; width:44px; height:44px; left:calc(50% - 22px); top:calc(50% - 22px); border:4px solid #1ea0ff; border-radius:50%; opacity:0; pointer-events:none; transition:opacity .18s ease; }
-  #hint { position:fixed; left:50%; transform:translateX(-50%); bottom:90px; color:#c9d1d9; font-size:13px; opacity:.9; }
-  #toolbar { position:fixed; left:50%; transform:translateX(-50%); bottom:90px; display:flex; gap:8px; }
-  #toolbar > button { height:40px; border-radius:10px; padding:0 12px; }
-  canvas { width:100vw; height:100vh; display:block; touch-action:none; }
-  .chip { font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #2a2e36; background:#12141a;}
-  .on      { border-color:#2f9e44; color:#b7ffbe;}
-  .editing { outline:2px dashed #52a8ff; outline-offset:2px;}
+  body,html { margin:0; height:100%; background:#0b0b0f; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
+  #app { display:flex; flex-direction:column; height:100%; }
+
+  /* Top status bar */
+  #statusBar { background:#10131a; padding:8px 12px; font-size:14px; color:#9fb1ff; border-bottom:1px solid #1c202a; }
+
+  /* Controls panel */
+  #controls { background:#141821; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  #controls select, #controls button { width:100%; height:44px; font-size:15px; border-radius:8px; border:none; }
+  #controls select { background:#1d2230; color:#fff; }
+  #controls button { background:#2563ff; color:#fff; font-weight:600; }
+  #controls .row { display:flex; gap:8px; }
+  #controls .row button { flex:1; }
+  #controls button.secondary { background:#2a2f3b; }
+
+  /* Stage (3D/AR view area) */
+  #stage { flex:1; position:relative; background:#000; }
+  #threeCanvas { width:100%; height:100%; display:block; }
+
+  /* Bottom bar (Enter AR) */
+  #bottomBar { padding:10px; background:#10131a; border-top:1px solid #1c202a; }
+  #btnEnterAR { width:100%; height:50px; border-radius:10px; font-size:16px; font-weight:600; background:#2563ff; color:#fff; border:none; }
 </style>
 
-<!-- Import map for local Three.js modules -->
 <script type="importmap">
 {
   "imports": {
@@ -37,352 +41,121 @@
 </script>
 </head>
 <body>
+<div id="app">
 
-<div id="status">boot…</div>
+  <!-- Status strip -->
+  <div id="statusBar">boot…</div>
 
-<div id="hud">
-  <label for="modelSel">Model</label>
-  <select id="modelSel"><option>Loading…</option></select>
+  <!-- Controls -->
+  <div id="controls">
+    <select id="modelSelect" disabled><option>Loading catalog…</option></select>
+    <button id="btnAdd" disabled>➕ Add Model</button>
+    <div class="row">
+      <button id="btnUndo" class="secondary" disabled>↩ Undo</button>
+      <button id="btnClear" class="secondary" disabled>🗑 Clear</button>
+    </div>
+  </div>
 
-  <button id="btnAdd" class="primary">+ Add</button>
-  <button id="btnUndo" class="ghost">↺ Undo</button>
-  <button id="btnClear" class="ghost">🗑 Clear</button>
+  <!-- 3D Stage -->
+  <div id="stage">
+    <canvas id="threeCanvas"></canvas>
+  </div>
 
-  <div id="right">
-    <span id="editChip" class="chip">Edit: off</span>
-    <button id="btnShot" class="ghost">📸 Snapshot</button>
-    <button id="btnRec"  class="ghost">⏺ Start</button>
+  <!-- Bottom bar -->
+  <div id="bottomBar">
+    <button id="btnEnterAR">📷 Enter AR</button>
   </div>
 </div>
 
-<div id="toolbar" hidden>
-  <button id="btnModeMove"  class="ghost">Move</button>
-  <button id="btnModeScale" class="ghost">Scale</button>
-  <button id="btnLock"      class="ghost">🔒 Lock</button>
-</div>
-
-<div id="hint" hidden>Tap where the ring is to place</div>
-<div id="reticle"></div>
-
-<button id="enter" class="primary">📷 Enter AR</button>
-
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-const $ = (id)=>document.getElementById(id);
-const modelSel = $('modelSel');
-const statusEl = $('status');
-const enterBtn = $('enter');
-const btnAdd = $('btnAdd');
-const btnUndo = $('btnUndo');
-const btnClear = $('btnClear');
-const btnShot = $('btnShot');
-const btnRec  = $('btnRec');
-const reticleEl = $('reticle');
-const hintEl = $('hint');
-const editChip = $('editChip');
-const tb = $('toolbar');
-const btnModeMove = $('btnModeMove');
-const btnModeScale = $('btnModeScale');
-const btnLock = $('btnLock');
+const ui = {
+  status: document.getElementById('statusBar'),
+  modelSelect: document.getElementById('modelSelect'),
+  add: document.getElementById('btnAdd'),
+  undo: document.getElementById('btnUndo'),
+  clear: document.getElementById('btnClear'),
+  enterAR: document.getElementById('btnEnterAR'),
+  canvas: document.getElementById('threeCanvas')
+};
 
-let xrSession = null;
-let currentAnchorSpace = null;
-let placeMode = 'move';   // 'move' | 'scale'
-let editing = false;
-let locked = false;
+function setStatus(txt){ ui.status.textContent = txt; }
 
-let renderer, scene, camera, xrRefSpace, hitTestSource = null, viewerSpace = null;
-let reticle3D;
+// Scene basics
+const renderer = new THREE.WebGLRenderer({canvas:ui.canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight-160);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0,1.5,3);
+
+const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
+scene.add(light);
+
+const draco = new DRACOLoader().setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const loader = new GLTFLoader().setDRACOLoader(draco);
+
 let catalog = [];
-let placed = []; // stack of placed THREE.Object3D
-let active = null; // currently selected/last placed object
+let placed = [];
 
-// ---------- Three basics ----------
-renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.xr.enabled = true;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-document.body.appendChild(renderer.domElement);
-
-scene = new THREE.Scene();
-camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 40);
-
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
-scene.add(hemi);
-const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-dir.position.set(1, 2, 1);
-dir.castShadow = true;
-scene.add(dir);
-
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.ShadowMaterial({ opacity:0.35 }));
-ground.rotation.x = -Math.PI/2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-// Reticle
-reticle3D = new THREE.Mesh(
-  new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2),
-  new THREE.MeshBasicMaterial({ color:0x1ea0ff, side:THREE.DoubleSide })
-);
-reticle3D.matrixAutoUpdate = false;
-reticle3D.visible = false;
-scene.add(reticle3D);
-
-// Loaders
-const draco = new DRACOLoader();
-draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-const gltf = new GLTFLoader();
-gltf.setDRACOLoader(draco);
-
-// ---------- UI helpers ----------
-function setStatus(t){ statusEl.textContent = t; }
-function showReticle(show){ reticleEl.style.opacity = show ? 1 : 0; reticle3D.visible = !!show; }
-function showHint(t){ hintEl.textContent = t; hintEl.hidden = false; }
-function hideHint(){ hintEl.hidden = true; }
-function setEdit(on){
-  editing = on;
-  editChip.textContent = `Edit: ${on ? 'on' : 'off'}`;
-  editChip.classList.toggle('on', on);
-  tb.hidden = !on;
-  if (active) active.traverse(o=>o.isMesh && o.material && (o.material.needsUpdate=true));
-}
-function setLock(on){
-  locked = on;
-  btnLock.textContent = on ? '🔓 Unlock' : '🔒 Lock';
-}
-
-// ---------- Catalog ----------
 async function loadCatalog(){
-  setStatus('loading catalog…');
-  try{
-    const res = await fetch('./models/models.json', { cache:'no-cache' });
-    const json = await res.json();
-    catalog = Array.isArray(json) ? json : (json.models || []);
-    modelSel.innerHTML = '';
-    for (const item of catalog){
-      const opt = document.createElement('option');
-      opt.value = item.url; opt.textContent = item.name || item.url;
-      modelSel.appendChild(opt);
-    }
-    setStatus(`catalog loaded (${catalog.length})`);
-  }catch(e){
-    setStatus('failed to load ./models/models.json');
-    modelSel.innerHTML = '<option>Failed to load</option>';
+  try {
+    const res = await fetch('./models/models.json',{cache:'no-cache'});
+    catalog = await res.json();
+    ui.modelSelect.innerHTML = '';
+    catalog.forEach((m,i)=>{
+      const opt=document.createElement('option');
+      opt.value=i; opt.textContent=m.name; ui.modelSelect.appendChild(opt);
+    });
+    ui.modelSelect.disabled=false;
+    ui.add.disabled=false;
+    setStatus('✅ Catalog loaded');
+  } catch(e){
+    setStatus('⚠ Failed to load catalog');
   }
 }
-await loadCatalog();
 
-// ---------- AR session ----------
-enterBtn.onclick = async ()=>{
-  if (xrSession){ xrSession.end(); return; }
-  if (!navigator.xr) { alert('WebXR not available'); return; }
-  const ok = await navigator.xr.isSessionSupported('immersive-ar');
-  if(!ok){ alert('immersive-ar not supported'); return; }
-
-  xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test', 'local-floor'] });
-  renderer.xr.setSession(xrSession);
-
-  xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
-  viewerSpace = await xrSession.requestReferenceSpace('viewer');
-  const hitSrc = await xrSession.requestHitTestSource({ space: viewerSpace });
-  hitTestSource = hitSrc;
-
-  xrSession.addEventListener('end', ()=>{
-    xrSession = null; hitTestSource = null; viewerSpace = null; currentAnchorSpace = null;
-    setStatus('AR session ended');
-    enterBtn.textContent = '📷 Enter AR';
-    showReticle(false); hideHint(); setEdit(false); setLock(false);
-  });
-
-  xrSession.addEventListener('select', onARSelect);
-
-  enterBtn.textContent = '⏻ Exit AR';
-  setStatus('AR session started. Move phone; tap to place.');
-  showHint('Tap Add, then tap on the ring to place');
-  renderer.setAnimationLoop(onXRFrame);
-};
-
-function onXRFrame(t, frame){
-  const session = frame.session;
-  const pose = frame.getViewerPose(xrRefSpace);
-  if (!pose) return;
-
-  // Hit test
-  const hits = frame.getHitTestResults(hitTestSource);
-  if (hits.length > 0){
-    const hit = hits[0];
-    const hitPose = hit.getPose(xrRefSpace);
-    reticle3D.matrix.fromArray(hitPose.transform.matrix);
-    showReticle(true);
-  } else {
-    showReticle(false);
-  }
-
-  renderer.render(scene, camera);
-}
-
-// ---------- Placement flow ----------
-let arReadyToPlace = false; // set by Add button, cleared after drop
-
-btnAdd.onclick = ()=>{
-  if (!xrSession){ alert('Enter AR first.'); return; }
-  arReadyToPlace = true;
-  setEdit(false);
-  setLock(false);
-  showHint('Aim the ring and tap once to place');
-};
-
-async function onARSelect(ev){
-  if (!arReadyToPlace || !reticle3D.visible || locked) return;
-  const choice = catalog[modelSel.selectedIndex];
-  if (!choice){ return; }
-
+ui.add.onclick = async ()=>{
+  const item = catalog[ui.modelSelect.value];
+  if(!item) return;
+  setStatus('Loading '+item.name+'…');
   try{
-    setStatus('loading model…');
-    const obj = (await gltf.loadAsync(choice.url)).scene;
-    obj.traverse(n=>{ if(n.isMesh){ n.castShadow = true; n.receiveShadow = true; }});
-    const s = choice.scale ?? 1;
-    obj.scale.setScalar(s);
-    obj.rotation.set(...(choice.rotation || [0,0,0]));
+    const glb=await loader.loadAsync(item.url);
+    const obj=glb.scene;
+    obj.scale.setScalar(item.scale||1);
     obj.position.set(0,0,0);
-    obj.applyMatrix4(reticle3D.matrix);
     scene.add(obj);
     placed.push(obj);
-    active = obj;
-    markEditingTarget(obj, true);
-    setEdit(true);
-    setLock(false);
-    arReadyToPlace = false;
-    showHint('Drag = move · Pinch = scale · Long-press = lock');
-    setStatus('placed');
-  }catch(e){
-    setStatus('model load error: '+e.message);
-  }
-}
-
-function markEditingTarget(obj, on){
-  if (!obj) return;
-  obj.traverse(o=>{
-    if (o.isMesh){
-      o.userData.__origEmissive ??= (o.material.emissive ? o.material.emissive.clone() : null);
-      if (on){
-        if (o.material.emissive) o.material.emissive.setHex(0x204eff);
-      }else{
-        if (o.material.emissive && o.userData.__origEmissive) o.material.emissive.copy(o.userData.__origEmissive);
-      }
-      o.material.needsUpdate = true;
-    }
-  });
-}
-
-// Undo / clear
-btnUndo.onclick = ()=>{
-  const o = placed.pop();
-  if (o){ scene.remove(o); o.traverse(c=>c.dispose && c.dispose()); if (o===active){ active=null; setEdit(false);} }
-  setStatus('undo');
-};
-btnClear.onclick = ()=>{
-  for (const o of placed){ scene.remove(o); }
-  placed.length = 0; active=null; setEdit(false); setLock(false);
-  setStatus('cleared');
+    ui.undo.disabled=false;
+    ui.clear.disabled=false;
+    setStatus('✅ Added '+item.name);
+  }catch(e){ setStatus('⚠ Error '+e.message); }
 };
 
-// ---------- Gestures (move/scale/lock) ----------
-let touchState = { t:0, x:0, y:0, d:0, fingers:0 };
-function distance2(touches){
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.hypot(dx,dy);
-}
-
-renderer.domElement.addEventListener('touchstart', (e)=>{
-  touchState.fingers = e.touches.length;
-  touchState.t = performance.now();
-  if (e.touches.length===1){
-    touchState.x = e.touches[0].clientX;
-    touchState.y = e.touches[0].clientY;
-  } else if (e.touches.length===2){
-    touchState.d = distance2(e.touches);
-  }
-});
-
-renderer.domElement.addEventListener('touchmove', (e)=>{
-  if (!editing || locked || !active) return;
-
-  if (e.touches.length===1 && placeMode==='move'){
-    // move: project reticle and slide object towards it
-    if (reticle3D.visible){
-      const m = new THREE.Matrix4().copy(reticle3D.matrix);
-      const p = new THREE.Vector3().setFromMatrixPosition(m);
-      active.position.lerp(p, 0.25);
-    }
-  } else if (e.touches.length===2 && placeMode==='scale'){
-    const d2 = distance2(e.touches);
-    const delta = (d2 - touchState.d) / 300.0;
-    const s = THREE.MathUtils.clamp(active.scale.x + delta, 0.05, 10);
-    active.scale.setScalar(s);
-    touchState.d = d2;
-  }
-}, {passive:true});
-
-renderer.domElement.addEventListener('touchend', (e)=>{
-  // Long-press to lock/unlock
-  const dt = performance.now() - touchState.t;
-  if (dt > 450 && active){
-    setLock(!locked);
-  }
-});
-
-// Toolbar modes
-btnModeMove.onclick = ()=>{ placeMode='move'; btnModeMove.classList.add('on'); btnModeScale.classList.remove('on'); };
-btnModeScale.onclick = ()=>{ placeMode='scale'; btnModeScale.classList.add('on'); btnModeMove.classList.remove('on'); };
-btnLock.onclick = ()=> setLock(!locked);
-btnModeMove.click(); // default
-
-// Tap canvas to toggle edit selection (if touching an object)
-renderer.domElement.addEventListener('click', (e)=>{
-  if (!xrSession) return;
-  // simple toggle: last placed is active
-  if (active){ setEdit(!editing); markEditingTarget(active, editing); }
-});
-
-// ---------- Recording & Snapshot ----------
-let recorder=null, chunks=[], recording=false;
-
-function saveBlob(blob,name){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=name; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-
-btnShot.onclick = ()=>{
-  const url = renderer.domElement.toDataURL('image/png');
-  const a=document.createElement('a'); a.href=url; a.download=`ar-shot-${Date.now()}.png`; a.click();
+ui.undo.onclick=()=>{
+  const o=placed.pop();
+  if(o) scene.remove(o);
+  if(placed.length===0){ ui.undo.disabled=true; ui.clear.disabled=true; }
 };
 
-btnRec.onclick = ()=>{
-  if (recording){ recorder.stop(); btnRec.textContent='⏺ Start'; recording=false; return; }
-  const stream = renderer.domElement.captureStream ? renderer.domElement.captureStream(30) : null;
-  if(!stream){ alert('Recording not supported here. Use Android Chrome or do OS screen-record.'); return; }
-  let mime='video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm;codecs=vp8';
-  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm';
-  chunks=[];
-  recorder=new MediaRecorder(stream,{mimeType:mime, videoBitsPerSecond:7_000_000});
-  recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
-  recorder.onstop=()=>saveBlob(new Blob(chunks,{type:mime}), `ar-recording-${Date.now()}.webm`);
-  recorder.start(); recording=true; btnRec.textContent='⏹ Stop';
+ui.clear.onclick=()=>{
+  placed.forEach(o=>scene.remove(o));
+  placed.length=0;
+  ui.undo.disabled=true; ui.clear.disabled=true;
 };
 
-// ---------- Resize ----------
-addEventListener('resize', ()=>{
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-});
+function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); }
+animate();
+
+ui.enterAR.onclick=()=>{
+  alert('AR session would start here (WebXR hit-test).');
+};
+
+loadCatalog();
 </script>
 </body>
 </html>
