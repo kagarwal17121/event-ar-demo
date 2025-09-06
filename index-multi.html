@@ -31,6 +31,14 @@
     <button id="clearBtn" class="btn muted">🗑 Clear</button>
   </div>
   <div id="status">boot…</div>
+  <script>
+  // Show uncaught errors in the status bar
+  (function () {
+    const s = document.getElementById('status');
+    window.addEventListener('error', e => s && (s.textContent = 'Error: ' + e.message));
+    window.addEventListener('unhandledrejection', e => s && (s.textContent = 'Error: ' + (e.reason?.message || e.reason)));
+  })();
+</script>
   <div id="stage"></div>
   <button id="enterAR" class="btn primary">📷 Enter AR</button>
 
