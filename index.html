@@ -2,91 +2,196 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Event AR — Catalog Check</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
+  <title>AR Catalog — Single Model</title>
   <style>
-    :root { --bg:#0b0c10; --card:#12141a; --text:#e9ecf1; --muted:#9aa4b2; --ok:#2ecc71; --err:#ff5d5d; }
-    html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial}
-    #status{position:sticky;top:0;padding:.6rem .8rem;background:#000a;border-bottom:1px solid #222;color:#ddd;font-size:13px}
-    .ok{color:var(--ok)} .err{color:var(--err)}
-    main{max-width:920px;margin:16px auto;padding:0 12px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-    .card{background:var(--card);border:1px solid #1e2230;border-radius:12px;overflow:hidden}
-    .thumb{width:100%;aspect-ratio:16/10;object-fit:cover;background:#0f1115}
-    .pad{padding:10px}
-    .name{font-weight:600}
-    .muted{color:var(--muted);font-size:12px}
-    a.btn{display:inline-block;margin-top:8px;padding:8px 10px;border-radius:10px;background:#2f6dff;color:#fff;text-decoration:none}
-    code{background:#0e1117;border:1px solid #1a2030;border-radius:6px;padding:1px 6px}
+    :root { color-scheme: dark; }
+    body, html { margin:0; height:100%; background:#0b0b0c; color:#e8e8ea; font-family: system-ui, sans-serif; }
+    #topbar { position:fixed; inset:0 0 auto 0; padding:10px 12px; background:#111; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center; z-index:2; }
+    label { opacity:.9; }
+    select { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a2a2e; background:#161618; color:#e8e8ea; }
+    button { padding:12px 18px; border:0; border-radius:14px; background:#2d6df6; color:white; font-weight:600; }
+    #status { position:fixed; left:8px; right:8px; top:52px; font:12px/1.4 monospace; opacity:.85; z-index:2; }
+    #stage { position:absolute; inset:0; }
+    #enterAR { position:fixed; left:50%; transform:translateX(-50%); bottom:24px; }
+    canvas { display:block; width:100%; height:100%; }
   </style>
 </head>
 <body>
+  <div id="topbar">
+    <label for="modelSelect">Model</label>
+    <select id="modelSelect"><option>Loading…</option></select>
+    <button id="loadBtn">Add</button>
+  </div>
   <div id="status">boot…</div>
-  <main>
-    <h1>Catalog sanity check</h1>
-    <p>This page only fetches <code>./models/models.json</code> and renders cards. If this works, your paths & JSON are correct.</p>
-    <div id="grid" class="grid"></div>
+  <div id="stage"></div>
+  <button id="enterAR">📷 Enter AR</button>
 
-    <h3>Tips if it fails</h3>
-    <ul>
-      <li>Paths on GitHub Pages are <b>case-sensitive</b>. Folder must be <code>models/</code> and file exactly <code>models.json</code>.</li>
-      <li>Use a <b>relative</b> fetch: <code>./models/models.json</code> (do <em>not</em> use <code>/models/models.json</code>).</li>
-      <li>Ensure there’s no hidden extension (e.g., <code>models.json.txt</code>).</li>
-      <li>Validate JSON is an array (or has <code>{"models":[...]}</code>) and contains <code>name</code>, <code>url</code>, and optional <code>thumbnail</code>.</li>
-    </ul>
-  </main>
+  <script type="module">
+    // --- Local three.js imports
+    import * as THREE from './lib/three/build/three.module.js';
+    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
+    import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
 
-  <script>
-    const S = document.getElementById('status');
-    const G = document.getElementById('grid');
+    // ---------- UI helpers
+    const statusEl = document.getElementById('status');
+    const selectEl = document.getElementById('modelSelect');
+    const addBtn   = document.getElementById('loadBtn');
+    const enterBtn = document.getElementById('enterAR');
+    function log(msg){ console.log(msg); statusEl.textContent = msg; }
 
-    function setStatus(msg, cls){ S.className=cls||''; S.textContent = msg; }
+    // ---------- Three basics (non-AR preview background kept black)
+    const stage = document.getElementById('stage');
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    stage.appendChild(renderer.domElement);
 
-    async function loadCatalog() {
-      try {
-        setStatus('Fetching ./models/models.json …');
-        // Always use relative path so it works under /event-ar-demo/
-        const res = await fetch('./models/models.json', { cache: 'no-store' });
-        if (!res.ok) {
-          // Give exact HTTP status so we know why
-          throw new Error(`HTTP ${res.status} (${res.statusText}) for ./models/models.json`);
-        }
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : (data.models || []);
-        if (!Array.isArray(list) || list.length === 0) {
-          throw new Error('JSON parsed but no items found (expects array or {"models":[...]})');
-        }
-        // Render cards
-        G.innerHTML = '';
-        for (const item of list) {
-          const name = item.name || '(unnamed)';
-          const url  = item.url || item.file || item.src || '';
-          const thumb= item.thumbnail || '';
-          const el = document.createElement('div');
-          el.className = 'card';
-          el.innerHTML = `
-            ${thumb ? `<img class="thumb" src="${thumb}" alt="${name}">` : `<div class="thumb"></div>`}
-            <div class="pad">
-              <div class="name">${name}</div>
-              <div class="muted">${url ? url : '(no url in JSON item)'}</div>
-              <a class="btn" href="${url || '#'}" target="_blank" rel="noopener">open GLB</a>
-              <a class="btn" href="./index-multi.html" style="background:#454a57">open AR</a>
-            </div>
-          `;
-          G.appendChild(el);
-        }
-        setStatus(`OK — Loaded ${list.length} items from ./models/models.json`, 'ok');
-      } catch (err) {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
+    camera.position.set(0, 1.2, 2.2);
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+    scene.add(hemi);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(2, 4, 2);
+    scene.add(dir);
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function tick(){ renderer.render(scene, camera); requestAnimationFrame(tick); }
+    tick();
+
+    // ---------- GLTF + DRACO
+    const gltfLoader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    // IMPORTANT: all three draco_* files are in this folder
+    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+    draco.setDecoderConfig({ type:'wasm' });
+    gltfLoader.setDRACOLoader(draco);
+
+    let currentObject = null;
+    async function loadModel(url){
+      // ensure relative path from this page
+      const abs = new URL(url, location.href).href;
+      log('Loading model… ' + url);
+      try{
+        const gltf = await gltfLoader.loadAsync(abs);
+        const obj = gltf.scene;
+        obj.traverse(n=>{ if(n.isMesh){ n.castShadow = true; n.receiveShadow = true; }});
+        // clear old
+        if(currentObject) scene.remove(currentObject);
+        currentObject = obj;
+        // center + scale to reasonable preview
+        new THREE.Box3().setFromObject(obj).getCenter(obj.position).multiplyScalar(-1);
+        scene.add(obj);
+        log('Model loaded ✅');
+      }catch(err){
         console.error(err);
-        setStatus(`Failed to load catalog: ${err.message}`, 'err');
+        log('Model load error: ' + (err?.message || err));
       }
     }
 
-    // Helpful: show unhandled errors so you're never stuck on "boot…"
-    window.addEventListener('error', (e)=> setStatus(`JS error: ${e.message}`, 'err'));
-    window.addEventListener('unhandledrejection', (e)=> setStatus(`Promise error: ${e.reason?.message || e.reason}`, 'err'));
+    // ---------- Catalog
+    log('Booting…');
+    let catalog = [];
+    try{
+      const res = await fetch('./models/models.json');  // RELATIVE path is crucial
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      catalog = await res.json();
+      // Support both: [ {...} ] or { models:[...] }
+      if(Array.isArray(catalog) === false && Array.isArray(catalog.models)) catalog = catalog.models;
 
-    loadCatalog();
+      selectEl.innerHTML = '';
+      for(const item of catalog){
+        const opt = document.createElement('option');
+        opt.value = item.url;
+        opt.textContent = item.name;
+        selectEl.appendChild(opt);
+      }
+      log(`Catalog loaded ✅ (${catalog.length} items)`);
+    }catch(e){
+      log('Catalog load error: ' + e.message);
+      selectEl.innerHTML = '<option>Failed to load catalog</option>';
+    }
+
+    addBtn.onclick = ()=> {
+      const url = selectEl.value;
+      if(url) loadModel(url);
+    };
+
+    // ---------- WebXR AR (single placement)
+    let xrRefSpace, viewerSpace, hitTestSource = null, arSceneRoot = null;
+
+    enterBtn.onclick = async () => {
+      if (!navigator.xr) { log('WebXR not available'); return; }
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!supported) { log('immersive-ar not supported'); return; }
+
+      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(session);
+
+      xrRefSpace = await session.requestReferenceSpace('local');
+      viewerSpace = await session.requestReferenceSpace('viewer');
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+
+      // AR scene root
+      arSceneRoot = new THREE.Group();
+      scene.add(arSceneRoot);
+
+      // If there’s a model already loaded, clone into AR root on first tap
+      let placed = false;
+      const onSelect = () => {
+        if (reticle.visible && currentObject && !placed) {
+          const clone = currentObject.clone(true);
+          clone.position.copy(reticle.position);
+          clone.quaternion.copy(reticle.quaternion);
+          arSceneRoot.add(clone);
+          placed = true;
+        }
+      };
+      session.addEventListener('select', onSelect);
+
+      // Simple reticle
+      const reticleGeo = new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2);
+      const reticleMat = new THREE.MeshBasicMaterial({ color: 0x4da3ff });
+      const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      renderer.setAnimationLoop((t, frame) => {
+        if (frame) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length) {
+            const pose = hitTestResults[0].getPose(xrRefSpace);
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+          } else {
+            reticle.visible = false;
+          }
+        }
+        renderer.render(scene, camera);
+      });
+
+      session.addEventListener('end', () => {
+        renderer.setAnimationLoop(null);
+        renderer.xr.enabled = false;
+        scene.remove(arSceneRoot);
+        reticle?.removeFromParent();
+        log('AR session ended');
+      });
+    };
   </script>
 </body>
 </html>
