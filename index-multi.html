@@ -1,298 +1,198 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-/>
-<title>Event AR — Multi</title>
-<style>
-  :root {
-    --ui-bg: rgba(20,20,20,.85);
-    --ui-fg: #fff;
-    --accent: #2f6dff;
-    --btn: #2f6dff;
-    --btn-fg: #fff;
-  }
-  html, body { margin:0; height:100%; background:#000; color:#ddd; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-  #status {
-    position: fixed; top: 8px; left: 8px; right: 8px; z-index: 50;
-    background: rgba(0,0,0,.55); color:#eee; padding:6px 10px; border-radius:8px;
-    font-size:12px; max-height:40px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-  }
-  #hud {
-    position: fixed; top:54px; left:0; right:0; z-index: 40; padding:10px;
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    background: var(--ui-bg); color:var(--ui-fg);
-    border-bottom: 1px solid rgba(255,255,255,.08);
-  }
-  label { opacity:.9; font-size:14px; }
-  select, button {
-    appearance:none; border-radius:12px; border:1px solid rgba(255,255,255,.15);
-    background:#111; color:#fff; padding:10px 14px; font-size:16px;
-  }
-  select { min-width: 210px; background:#0f0f0f; }
-  .btn { background:#1f1f1f; }
-  .primary { background: var(--btn); color: var(--btn-fg); border-color: transparent; }
-  #enterAR {
-    position: fixed; bottom: 24px; left:0; right:0; margin:0 auto; width:max-content;
-    padding:14px 20px; border-radius:20px; z-index:60;
-    background: var(--btn); color:#fff; border:none; font-size:18px;
-    box-shadow: 0 10px 24px rgba(0,0,0,.35);
-  }
-  #hint {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: 94px; padding:8px 12px; border-radius:10px;
-    background: rgba(0,0,0,.65); color:#fff; z-index:55; display:none; font-size:14px;
-  }
-  canvas { display:block; width:100%; height:100%; }
-</style>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
+  <title>AR Catalog — Multi Model</title>
+  <style>
+    :root { color-scheme: dark; }
+    body, html { margin:0; height:100%; background:#0b0b0c; color:#e8e8ea; font-family: system-ui, sans-serif; }
+    #topbar { position:fixed; inset:0 0 auto 0; padding:10px 12px; background:#111; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center; z-index:2; }
+    label { opacity:.9; }
+    select { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a2a2e; background:#161618; color:#e8e8ea; }
+    .btn { padding:12px 16px; border:0; border-radius:12px; }
+    .primary { background:#2d6df6; color:white; font-weight:700; }
+    .muted   { background:#2a2a2e; color:#ddd; }
+    #status { position:fixed; left:8px; right:8px; top:52px; font:12px/1.4 monospace; opacity:.85; z-index:2; }
+    #stage { position:absolute; inset:0; }
+    #enterAR { position:fixed; left:50%; transform:translateX(-50%); bottom:24px; }
+    canvas { display:block; width:100%; height:100%; }
+  </style>
 </head>
 <body>
+  <div id="topbar">
+    <label for="modelSelect">Model</label>
+    <select id="modelSelect"><option>Loading…</option></select>
+    <button id="addBtn"  class="btn primary">+ Add</button>
+    <button id="undoBtn" class="btn muted">⟲ Undo</button>
+    <button id="clearBtn" class="btn muted">🗑 Clear</button>
+  </div>
+  <div id="status">boot…</div>
+  <div id="stage"></div>
+  <button id="enterAR" class="btn primary">📷 Enter AR</button>
 
-<div id="status">boot…</div>
+  <script type="module">
+    import * as THREE from './lib/three/build/three.module.js';
+    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
+    import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
 
-<div id="hud">
-  <label for="modelSel">Model</label>
-  <select id="modelSel"><option>Loading…</option></select>
+    const statusEl = document.getElementById('status');
+    function log(m){ console.log(m); statusEl.textContent = m; }
 
-  <button id="addBtn" class="btn">➕ Add</button>
-  <button id="undoBtn" class="btn">↶ Undo</button>
-  <button id="clearBtn" class="btn">🗑 Clear</button>
-</div>
+    // Renderer / scene
+    const stage = document.getElementById('stage');
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    stage.appendChild(renderer.domElement);
 
-<div id="hint">Move phone to find a surface, then tap to place</div>
-<button id="enterAR" class="primary">📷 Enter AR</button>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
+    camera.position.set(0, 1.2, 2.4);
 
-<script type="module">
-/* -------------------------------------------------------
-   Imports (LOCAL files in your repo — no CDNs)
-------------------------------------------------------- */
-import * as THREE from './lib/three/build/three.module.js';
-import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
+    scene.add(new THREE.AmbientLight(0xffffff, .7));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(2,4,2);
+    scene.add(sun);
 
-/* -------------------------------------------------------
-   DOM helpers / global state
-------------------------------------------------------- */
-const statusEl = document.getElementById('status');
-const modelSel  = document.getElementById('modelSel');
-const addBtn    = document.getElementById('addBtn');
-const undoBtn   = document.getElementById('undoBtn');
-const clearBtn  = document.getElementById('clearBtn');
-const enterBtn  = document.getElementById('enterAR');
-const hintEl    = document.getElementById('hint');
+    window.addEventListener('resize', ()=>{
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
 
-const log = (m)=>{ statusEl.textContent = `${new Date().toLocaleTimeString()} — ${m}`; };
-const deg2rad = d => d * Math.PI / 180;
-const isPathLike = (s)=> /^https?:\/\//.test(s)||/^\.{0,2}\//.test(s)||s.startsWith('/');
+    function tick(){ renderer.render(scene, camera); requestAnimationFrame(tick); }
+    tick();
 
-let renderer, scene, camera;
-let xrSession = null, refSpace = null, viewerSpace = null, hitSource = null;
-let reticle;
-let CATALOG = [];
-let placingArmed = false;
-let pendingToPlace = null; // { gltf, scale, yUp, position, rotationDeg }
-const placed = []; // stack for undo
+    // GLTF + DRACO
+    const gltfLoader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+    draco.setDecoderConfig({ type:'wasm' });
+    gltfLoader.setDRACOLoader(draco);
 
-/* -------------------------------------------------------
-   Three.js scene
-------------------------------------------------------- */
-function initThree() {
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha:true, powerPreference:'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled = true;
-  document.body.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 50);
-
-  // dim light just for non-AR preview
-  const amb = new THREE.AmbientLight(0xffffff, .6); scene.add(amb);
-  const dir = new THREE.DirectionalLight(0xffffff,.4); dir.position.set(2,3,1); scene.add(dir);
-
-  // Reticle
-  const ringGeo = new THREE.RingGeometry(0.08, 0.1, 48);
-  ringGeo.rotateX(-Math.PI/2);
-  const ringMat = new THREE.MeshBasicMaterial({ color:0x2f6dff, transparent:true, opacity:.85 });
-  reticle = new THREE.Mesh(ringGeo, ringMat);
-  reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
-  scene.add(reticle);
-
-  window.addEventListener('resize', ()=>{
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-
-  renderer.setAnimationLoop((t, frame)=>{
-    if (!frame || !xrSession) return;
-
-    // plane hit test
-    const results = frame.getHitTestResults(hitSource || null);
-    if (results && results.length) {
-      const pose = results[0].getPose(refSpace);
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
-    } else {
-      reticle.visible = false;
+    // Catalog
+    const selectEl = document.getElementById('modelSelect');
+    let catalog=[];
+    try{
+      const r = await fetch('./models/models.json');
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      catalog = await r.json();
+      if(!Array.isArray(catalog) && Array.isArray(catalog.models)) catalog = catalog.models;
+      selectEl.innerHTML='';
+      for(const item of catalog){
+        const opt=document.createElement('option');
+        opt.value=item.url; opt.textContent=item.name;
+        selectEl.appendChild(opt);
+      }
+      log(`Catalog loaded ✅ (${catalog.length} items)`);
+    }catch(e){
+      log('Catalog load error: '+e.message);
+      selectEl.innerHTML='<option>Failed to load catalog</option>';
     }
-    renderer.render(scene, camera);
-  });
-}
 
-/* -------------------------------------------------------
-   GLTF + DRACO loader
-------------------------------------------------------- */
-const gltfLoader = new GLTFLoader();
-const draco = new DRACOLoader();
-// IMPORTANT: this path must point to the folder containing the 3 draco files
-draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-draco.setDecoderConfig({ type:'wasm' });
-gltfLoader.setDRACOLoader(draco);
+    // Non-AR staging area (lets you preview and stack multiple)
+    const stagingRoot = new THREE.Group();
+    scene.add(stagingRoot);
+    const stack = [];
 
-/* -------------------------------------------------------
-   Catalog loader (uses your models.json AS-IS)
-------------------------------------------------------- */
-async function loadCatalog() {
-  try {
-    log('Loading catalog…');
-    const res = await fetch('./models/models.json', { cache:'no-store' });
-    if (!res.ok) throw new Error('HTTP '+res.status+' for models.json');
-    const data = await res.json();
-    CATALOG = Array.isArray(data) ? data : (data.models || []);
-    modelSel.innerHTML = '';
-    CATALOG.forEach((m,i)=>{
-      const opt=document.createElement('option');
-      opt.value=i;
-      opt.textContent = m.name || m.url || ('Model '+(i+1));
-      modelSel.appendChild(opt);
-    });
-    log('Catalog loaded');
-  } catch (e) {
-    console.error(e);
-    modelSel.innerHTML = '<option>Failed to load catalog</option>';
-    log('Catalog load error: '+e.message);
-  }
-}
+    async function addModel(url){
+      const abs = new URL(url, location.href).href;
+      log('Loading: '+url);
+      const gltf = await gltfLoader.loadAsync(abs);
+      const obj = gltf.scene;
+      obj.traverse(n=>{ if(n.isMesh){ n.castShadow=true; n.receiveShadow=true; }});
+      // normalize size
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const target = 1.2; // ~meterish preview
+      const s = target / Math.max(size.x, size.y, size.z);
+      obj.scale.setScalar(s);
+      // center
+      box.setFromObject(obj);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      obj.position.sub(center);
 
-/* -------------------------------------------------------
-   Load selected GLB (no placement yet)
-------------------------------------------------------- */
-async function loadSelectedModel() {
-  const idx = parseInt(modelSel.value,10);
-  const info = CATALOG[idx];
-  if (!info) { log('Pick a model'); return; }
+      stagingRoot.add(obj);
+      stack.push(obj);
+      log('Added ✅  (stack: '+stack.length+')');
+    }
 
-  let src = info.url || info.file || info.src;
-  if (!src) { log('Model entry missing "url"'); return; }
+    document.getElementById('addBtn').onclick = () => {
+      const url = selectEl.value;
+      if(url) addModel(url).catch(e=>log('Load error: '+e.message));
+    };
+    document.getElementById('undoBtn').onclick = ()=>{
+      const m = stack.pop();
+      if(m){ m.removeFromParent(); log('Undo ✓ (stack: '+stack.length+')'); }
+    };
+    document.getElementById('clearBtn').onclick = ()=>{
+      while(stack.length){ stack.pop().removeFromParent(); }
+      log('Cleared ✓');
+    };
 
-  // If JSON already has "./models/..." or an absolute URL, use as-is; else prefix with ./models/
-  const url = isPathLike(src) ? src : ('./models/' + src);
+    // -------- WebXR: place the whole stagingRoot in AR, then tap to duplicate items
+    const enterBtn = document.getElementById('enterAR');
 
-  const scale    = (info.scale ?? 1);
-  const position = Array.isArray(info.position) ? info.position : [0,0,0];
-  const rotation = Array.isArray(info.rotation) ? info.rotation : [0,0,0]; // degrees
-  const yUp      = info.yUp !== false; // default true
+    enterBtn.onclick = async () => {
+      if(!navigator.xr){ log('WebXR not available'); return; }
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if(!supported){ log('immersive-ar not supported'); return; }
 
-  log('Loading model: ' + (info.name || url));
+      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures:['hit-test'] });
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(session);
 
-  return new Promise((resolve,reject)=>{
-    gltfLoader.load(url, (gltf)=>{
-      log('Model ready • tap Add, then tap surface to place');
-      pendingToPlace = { gltf, scale, yUp, position, rotationDeg: rotation };
-      placingArmed = true;
-      addBtn.classList.add('primary');
-      hintEl.style.display = xrSession ? 'block' : 'none';
-      resolve(gltf);
-    }, undefined, (err)=>{
-      log('Model load error: ' + (err?.message || err));
-      reject(err);
-    });
-  });
-}
+      const refSpace = await session.requestReferenceSpace('local');
+      const viewerSpace = await session.requestReferenceSpace('viewer');
+      const hitSource = await session.requestHitTestSource({ space: viewerSpace });
 
-/* -------------------------------------------------------
-   WebXR session helpers
-------------------------------------------------------- */
-async function startAR() {
-  if (!('xr' in navigator)) { log('WebXR not available'); return; }
-  const supported = await navigator.xr.isSessionSupported('immersive-ar');
-  if (!supported) { log('immersive-ar not supported'); return; }
+      // reticle
+      const retGeo = new THREE.RingGeometry(0.12,0.14,32).rotateX(-Math.PI/2);
+      const retMat = new THREE.MeshBasicMaterial({ color:0x4da3ff });
+      const reticle = new THREE.Mesh(retGeo, retMat); reticle.matrixAutoUpdate=false; reticle.visible=false;
+      scene.add(reticle);
 
-  xrSession = await navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['hit-test', 'local']
-  });
+      // AR root where clones go
+      const arRoot = new THREE.Group(); scene.add(arRoot);
 
-  renderer.xr.setReferenceSpaceType('local');
-  await renderer.xr.setSession(xrSession);
+      session.addEventListener('select', () => {
+        if (!reticle.visible) return;
+        // clone current staging
+        const clone = stagingRoot.clone(true);
+        clone.position.copy(reticle.position);
+        clone.quaternion.copy(reticle.quaternion);
+        arRoot.add(clone);
+      });
 
-  refSpace   = await xrSession.requestReferenceSpace('local');
-  viewerSpace= await xrSession.requestReferenceSpace('viewer');
-  hitSource  = await xrSession.requestHitTestSource({ space: viewerSpace });
+      renderer.setAnimationLoop((t, frame)=>{
+        if(frame){
+          const hits = frame.getHitTestResults(hitSource);
+          if(hits.length){
+            const pose = hits[0].getPose(refSpace);
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+          } else {
+            reticle.visible = false;
+          }
+        }
+        renderer.render(scene, camera);
+      });
 
-  xrSession.addEventListener('end', ()=>{
-    xrSession = null; hitSource = null; refSpace=null; viewerSpace=null;
-    reticle.visible = false; hintEl.style.display='none';
-    log('AR session ended');
-  });
-
-  // Tap to place
-  renderer.domElement.addEventListener('touchend', onTouch, { passive:true });
-
-  log('AR session started • move phone; tap to place');
-}
-function onTouch(ev){
-  if (!xrSession || !placingArmed || !reticle.visible || !pendingToPlace) return;
-  const { gltf, scale, yUp, position, rotationDeg } = pendingToPlace;
-  const obj = gltf.scene.clone(true);
-
-  // Base transform from JSON
-  obj.scale.setScalar(scale);
-  obj.position.set(position[0]||0, position[1]||0, position[2]||0);
-  obj.rotation.set(deg2rad(rotationDeg[0]||0), deg2rad(rotationDeg[1]||0), deg2rad(rotationDeg[2]||0));
-  if (!yUp) obj.rotation.x = -Math.PI/2;
-
-  // Snap to reticle
-  obj.position.setFromMatrixPosition(reticle.matrix);
-  obj.quaternion.setFromRotationMatrix(reticle.matrix);
-
-  obj.traverse(o=>{ if(o.isMesh){ o.castShadow=false; o.receiveShadow=false; }});
-  scene.add(obj);
-  placed.push(obj);
-
-  placingArmed = false;
-  addBtn.classList.remove('primary');
-  hintEl.style.display='none';
-  log('Placed: ' + (CATALOG[modelSel.value]?.name || 'model'));
-}
-
-/* -------------------------------------------------------
-   UI wire-up
-------------------------------------------------------- */
-enterBtn.addEventListener('click', startAR);
-addBtn.addEventListener('click', loadSelectedModel);
-undoBtn.addEventListener('click', ()=>{
-  const o = placed.pop();
-  if (o){ o.removeFromParent(); log('Undo: removed last'); }
-});
-clearBtn.addEventListener('click', ()=>{
-  while(placed.length){ placed.pop().removeFromParent(); }
-  log('Cleared all');
-});
-modelSel.addEventListener('change', ()=>{ placingArmed=false; addBtn.classList.remove('primary'); });
-
-/* -------------------------------------------------------
-   Boot
-------------------------------------------------------- */
-(async function boot(){
-  initThree();
-  await loadCatalog();
-  log('Ready');
-})();
-</script>
+      session.addEventListener('end', ()=>{
+        renderer.setAnimationLoop(null);
+        renderer.xr.enabled = false;
+        reticle.removeFromParent();
+        arRoot.removeFromParent();
+        log('AR session ended');
+      });
+    };
+  </script>
 </body>
 </html>
