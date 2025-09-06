@@ -1,0 +1,76 @@
+<!doctype html><meta charset="utf-8">
+<title>Place 3D on Photo</title>
+<style>html,body{margin:0;height:100%;background:#0b0b0f;color:#fff;font:14px system-ui}#ui{position:fixed;left:10px;top:10px;z-index:2}canvas{display:block;width:100vw;height:100vh}</style>
+<div id="ui">
+  <input id="img" type="file" accept="image/*">
+  <input id="glb" type="file" accept=".glb,.gltf" />
+  <button id="save">Save PNG</button>
+  <div>Drag with one finger = rotate · two fingers = pan/zoom</div>
+</div>
+<script type="importmap">
+{"imports":{"three":"./lib/three/build/three.module.js","three/addons/":"./lib/three/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+
+const r=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+r.outputColorSpace=THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(45,1,0.01,100); camera.position.set(0,1.6,3);
+const ctrl=new OrbitControls(camera,r.domElement); ctrl.enableDamping=true; ctrl.target.set(0,0,0);
+
+const hemi=new THREE.HemisphereLight(0xffffff,0x555566,0.9); scene.add(hemi);
+const dir=new THREE.DirectionalLight(0xffffff,1.1); dir.position.set(2,5,2); dir.castShadow=true; scene.add(dir);
+
+const bgMesh=new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.MeshBasicMaterial({map:null}));
+bgMesh.position.z = -0.001; // just behind everything
+scene.add(bgMesh);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.ShadowMaterial({opacity:0.35}));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+const draco=new DRACOLoader(); draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf=new GLTFLoader(); gltf.setDRACOLoader(draco);
+
+let model=null;
+document.getElementById('glb').onchange=async(e)=>{
+  const file=e.target.files[0]; if(!file) return;
+  const url=URL.createObjectURL(file);
+  const g=await gltf.loadAsync(url);
+  model=g.scene; model.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true;}}); 
+  model.position.set(0,0,0); scene.add(model);
+};
+
+document.getElementById('img').onchange=(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f);
+  new THREE.TextureLoader().load(url, tex=>{
+    tex.colorSpace=THREE.SRGBColorSpace;
+    bgMesh.material.map=tex; bgMesh.material.needsUpdate=true;
+    // Fit background and camera
+    const img = new Image(); img.onload=()=>{
+      const w=img.width, h=img.height; onResize(w,h);
+      // keep camera looking at ground (y=0)
+      camera.position.set(0,1.6,3); ctrl.update();
+    }; img.src=url;
+  });
+};
+
+document.getElementById('save').onclick=()=>{
+  const a=document.createElement('a'); a.href=r.domElement.toDataURL('image/png'); a.download='composite.png'; a.click();
+};
+
+function onResize(w=innerWidth,h=innerHeight){
+  r.setSize(w,h,false);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+  // Scale background quad to full screen (NDC)
+  const bg = new THREE.PlaneGeometry(2,2); bgMesh.geometry.dispose(); bgMesh.geometry=bg;
+}
+addEventListener('resize',()=>onResize());
+
+(function loop(){ ctrl.update(); r.render(scene,camera); requestAnimationFrame(loop); })();
+</script>
