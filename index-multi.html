@@ -1,36 +1,55 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AR Multi-Model</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AR Multi-Model (Mobile)</title>
 
 <style>
   :root { color-scheme: dark; }
-  body,html { margin:0; height:100%; background:#0b0b0f; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
+  html,body { margin:0; height:100%; background:#0b0b0f; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
   #app { display:flex; flex-direction:column; height:100%; }
-
   /* Top status bar */
-  #statusBar { background:#10131a; padding:8px 12px; font-size:14px; color:#9fb1ff; border-bottom:1px solid #1c202a; }
-
-  /* Controls panel */
+  #statusBar { background:#10131a; color:#9fb1ff; border-bottom:1px solid #1c202a; padding:8px 12px; font-size:14px; }
+  /* Controls */
   #controls { background:#141821; padding:10px; display:flex; flex-direction:column; gap:10px; }
-  #controls select, #controls button { width:100%; height:44px; font-size:15px; border-radius:8px; border:none; }
+  #controls select, #controls button {
+    width:100%; height:44px; font-size:15px; border-radius:10px; border:none;
+  }
   #controls select { background:#1d2230; color:#fff; }
-  #controls button { background:#2563ff; color:#fff; font-weight:600; }
-  #controls .row { display:flex; gap:8px; }
-  #controls .row button { flex:1; }
-  #controls button.secondary { background:#2a2f3b; }
-
-  /* Stage (3D/AR view area) */
+  #controls button.primary { background:#2563ff; color:#fff; font-weight:600; }
+  #controls button.secondary { background:#2a2f3b; color:#fff; }
+  #queued { font-size:12px; color:#aab4c3; }
+  .row { display:flex; gap:8px; }
+  .row button { flex:1; }
+  /* Stage (non-AR preview) */
   #stage { flex:1; position:relative; background:#000; }
-  #threeCanvas { width:100%; height:100%; display:block; }
-
-  /* Bottom bar (Enter AR) */
+  #previewCanvas { width:100%; height:100%; display:block; }
+  /* Bottom bar */
   #bottomBar { padding:10px; background:#10131a; border-top:1px solid #1c202a; }
   #btnEnterAR { width:100%; height:50px; border-radius:10px; font-size:16px; font-weight:600; background:#2563ff; color:#fff; border:none; }
+  /* In-AR overlay controls */
+  #arHud {
+    position: fixed; left: 0; right: 0; bottom: 12px; display:none;
+    padding: 0 12px; pointer-events: none;
+  }
+  #arHud .hudRow {
+    display:flex; gap:8px; justify-content:center;
+  }
+  #arHud button {
+    pointer-events: all; height:48px; min-width:80px; border-radius:10px; border:none;
+    background:#1d2230; color:#fff; font-size:14px;
+  }
+  #arHud .accent { background:#2563ff; }
+  /* Reticle */
+  .reticle {
+    position: absolute; left:50%; top:50%; width:40px; height:40px; margin:-20px 0 0 -20px;
+    border:2px solid #4fc3f7; border-radius:50%; box-shadow:0 0 12px rgba(79,195,247,.6);
+    display:none; pointer-events:none;
+  }
 </style>
 
+<!-- Local modules only -->
 <script type="importmap">
 {
   "imports": {
@@ -42,120 +61,325 @@
 </head>
 <body>
 <div id="app">
-
-  <!-- Status strip -->
   <div id="statusBar">boot…</div>
 
-  <!-- Controls -->
   <div id="controls">
     <select id="modelSelect" disabled><option>Loading catalog…</option></select>
-    <button id="btnAdd" disabled>➕ Add Model</button>
+    <button id="btnQueue" class="primary" disabled>➕ Queue Model</button>
+    <div id="queued">Queued: <span id="queuedName">None</span></div>
     <div class="row">
-      <button id="btnUndo" class="secondary" disabled>↩ Undo</button>
-      <button id="btnClear" class="secondary" disabled>🗑 Clear</button>
+      <button id="btnClear" class="secondary" disabled>🗑 Clear Placed</button>
+      <button id="btnResetPreview" class="secondary">↻ Reset Preview</button>
     </div>
   </div>
 
-  <!-- 3D Stage -->
   <div id="stage">
-    <canvas id="threeCanvas"></canvas>
+    <canvas id="previewCanvas"></canvas>
+    <div id="reticle" class="reticle"></div>
   </div>
 
-  <!-- Bottom bar -->
   <div id="bottomBar">
     <button id="btnEnterAR">📷 Enter AR</button>
   </div>
 </div>
 
+<!-- In-AR HUD -->
+<div id="arHud">
+  <div class="hudRow">
+    <button id="btnRotateL">⟲ 10°</button>
+    <button id="btnScaleDown">− Scale</button>
+    <button id="btnScaleUp">+ Scale</button>
+    <button id="btnRotateR">⟳ 10°</button>
+    <button id="btnDone" class="accent">Done</button>
+  </div>
+</div>
+
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const ui = {
   status: document.getElementById('statusBar'),
-  modelSelect: document.getElementById('modelSelect'),
-  add: document.getElementById('btnAdd'),
-  undo: document.getElementById('btnUndo'),
-  clear: document.getElementById('btnClear'),
+  select: document.getElementById('modelSelect'),
+  queue: document.getElementById('btnQueue'),
+  queuedName: document.getElementById('queuedName'),
+  clearPlaced: document.getElementById('btnClear'),
+  resetPreview: document.getElementById('btnResetPreview'),
   enterAR: document.getElementById('btnEnterAR'),
-  canvas: document.getElementById('threeCanvas')
+  canvas: document.getElementById('previewCanvas'),
+  reticle: document.getElementById('reticle'),
+  arHud: document.getElementById('arHud'),
+  rotL: document.getElementById('btnRotateL'),
+  rotR: document.getElementById('btnRotateR'),
+  scaleUp: document.getElementById('btnScaleUp'),
+  scaleDn: document.getElementById('btnScaleDown'),
+  done: document.getElementById('btnDone')
 };
+const setStatus = (t)=> ui.status.textContent = t;
 
-function setStatus(txt){ ui.status.textContent = txt; }
-
-// Scene basics
-const renderer = new THREE.WebGLRenderer({canvas:ui.canvas, antialias:true, alpha:true});
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(window.innerWidth, window.innerHeight-160);
+// ---------- Non-AR preview (simple orbit) ----------
+const renderer = new THREE.WebGLRenderer({ canvas: ui.canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+resizeRenderer();
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
-camera.position.set(0,1.5,3);
+const camera = new THREE.PerspectiveCamera(60, ui.canvas.clientWidth / ui.canvas.clientHeight, 0.1, 100);
+camera.position.set(0, 1.2, 2.5);
+scene.add(new THREE.HemisphereLight(0xffffff,0x333366,1.2));
 
-const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
-scene.add(light);
+const grid = new THREE.GridHelper(6, 24, 0x444, 0x222);
+grid.position.y = -0.001;
+scene.add(grid);
 
+let previewObj = null;
+let previewYaw = 0;
+function animatePreview(){
+  requestAnimationFrame(animatePreview);
+  if (previewObj) {
+    previewObj.rotation.y = previewYaw;
+  }
+  renderer.render(scene, camera);
+}
+animatePreview();
+
+// Simple touch rotate for preview
+let dragging=false, lastX=0;
+ui.canvas.addEventListener('pointerdown', e=>{ dragging=true; lastX=e.clientX; });
+ui.canvas.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const dx = e.clientX - lastX; lastX = e.clientX;
+  previewYaw += dx * 0.01;
+});
+window.addEventListener('pointerup', ()=> dragging=false);
+
+// ---------- Catalog / Queue ----------
 const draco = new DRACOLoader().setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-const loader = new GLTFLoader().setDRACOLoader(draco);
+const gltf = new GLTFLoader().setDRACOLoader(draco);
 
 let catalog = [];
-let placed = [];
+let queuedItem = null;
+let placedInAR = [];
+let lastPlaced = null;
 
 async function loadCatalog(){
   try {
-    const res = await fetch('./models/models.json',{cache:'no-cache'});
+    const res = await fetch('./models/models.json', { cache: 'no-cache' });
     catalog = await res.json();
-    ui.modelSelect.innerHTML = '';
-    catalog.forEach((m,i)=>{
-      const opt=document.createElement('option');
-      opt.value=i; opt.textContent=m.name; ui.modelSelect.appendChild(opt);
+    ui.select.innerHTML = '';
+    catalog.forEach((m,i)=> {
+      const o = document.createElement('option');
+      o.value = i; o.textContent = m.name || m.url;
+      ui.select.appendChild(o);
     });
-    ui.modelSelect.disabled=false;
-    ui.add.disabled=false;
-    setStatus('✅ Catalog loaded');
-  } catch(e){
-    setStatus('⚠ Failed to load catalog');
+    ui.select.disabled = false;
+    ui.queue.disabled  = false;
+    setStatus('✅ Catalog loaded. Queue a model, then Enter AR.');
+    // Load first into preview
+    loadPreview(catalog[0]);
+  } catch(err){
+    setStatus('⚠ Failed to load ./models/models.json');
+  }
+}
+loadCatalog();
+
+async function loadPreview(item){
+  // clear old
+  if (previewObj) { scene.remove(previewObj); previewObj = null; }
+  try {
+    const glb = await gltf.loadAsync(item.url);
+    previewObj = glb.scene;
+    previewObj.position.set(0,0,0);
+    previewObj.scale.setScalar(item.scale ?? 1);
+    scene.add(previewObj);
+  } catch(e) {
+    setStatus('⚠ Preview load error: ' + e.message);
   }
 }
 
-ui.add.onclick = async ()=>{
-  const item = catalog[ui.modelSelect.value];
-  if(!item) return;
-  setStatus('Loading '+item.name+'…');
+ui.select.addEventListener('change', ()=>{
+  const item = catalog[Number(ui.select.value)];
+  if (item) loadPreview(item);
+});
+
+ui.queue.addEventListener('click', ()=>{
+  const item = catalog[Number(ui.select.value)];
+  if (!item) return;
+  queuedItem = item;
+  ui.queuedName.textContent = item.name || item.url;
+  setStatus('Queued: ' + ui.queuedName.textContent + ' — Enter AR and tap to place.');
+});
+
+ui.clearPlaced.addEventListener('click', ()=>{
+  // Only affects AR session (when active). If not in AR this is a no-op.
+  placedInAR.length = 0;
+  lastPlaced = null;
+  setStatus('Placed cleared (AR).');
+});
+
+ui.resetPreview.addEventListener('click', ()=>{
+  previewYaw = 0;
+});
+
+// ---------- AR session ----------
+let xrSession = null;
+let xrRefSpace = null;
+let hitTestSource = null;
+let reticle3D = null;  // WebXR reticle mesh (not the CSS ring)
+
+renderer.xr.enabled = true;
+
+ui.enterAR.addEventListener('click', async ()=>{
   try{
-    const glb=await loader.loadAsync(item.url);
-    const obj=glb.scene;
-    obj.scale.setScalar(item.scale||1);
-    obj.position.set(0,0,0);
-    scene.add(obj);
-    placed.push(obj);
-    ui.undo.disabled=false;
-    ui.clear.disabled=false;
-    setStatus('✅ Added '+item.name);
-  }catch(e){ setStatus('⚠ Error '+e.message); }
-};
+    if (!navigator.xr) {
+      setStatus('⚠ WebXR not supported on this device/browser.');
+      return;
+    }
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if (!supported) { setStatus('⚠ AR not supported on this device.'); return; }
 
-ui.undo.onclick=()=>{
-  const o=placed.pop();
-  if(o) scene.remove(o);
-  if(placed.length===0){ ui.undo.disabled=true; ui.clear.disabled=true; }
-};
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test', 'local-floor'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
+    });
 
-ui.clear.onclick=()=>{
-  placed.forEach(o=>scene.remove(o));
-  placed.length=0;
-  ui.undo.disabled=true; ui.clear.disabled=true;
-};
+    // Bind WebGL layer
+    await renderer.xr.setSession(xrSession);
 
-function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); }
-animate();
+    xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
 
-ui.enterAR.onclick=()=>{
-  alert('AR session would start here (WebXR hit-test).');
-};
+    // Create a hit test source using viewer space
+    const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+    hitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
 
-loadCatalog();
+    // Build a THREE scene for AR (reuse renderer, but separate objects)
+    buildARReticle();
+
+    // UI in AR
+    ui.arHud.style.display = 'block';
+    ui.reticle.style.display = 'none'; // we’ll use 3D reticle
+
+    setStatus('👆 Move device to find a plane. Tap to place queued model.');
+    placedInAR.length = 0;
+    lastPlaced = null;
+
+    xrSession.addEventListener('select', onXRSelect); // tap to place
+    renderer.setAnimationLoop(onXRFrame);
+
+  }catch(err){
+    setStatus('⚠ Failed to start AR: ' + err.message);
+  }
+});
+
+function buildARReticle(){
+  // simple ring as 3D reticle
+  const geo = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({ color:0x4fc3f7 });
+  reticle3D = new THREE.Mesh(geo, mat);
+  reticle3D.matrixAutoUpdate = false;
+  reticle3D.visible = false;
+  renderer.xr.getCamera().parent.add(reticle3D); // attach to XR scene root
+}
+
+// XR frame loop
+function onXRFrame(time, frame){
+  const session = frame.session;
+  const pose = frame.getViewerPose(xrRefSpace);
+  if (!pose) return;
+
+  // Hit test
+  if (hitTestSource){
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length > 0){
+      const hit = hits[0];
+      const hitPose = hit.getPose(xrRefSpace);
+      reticle3D.visible = true;
+      reticle3D.matrix.fromArray(hitPose.transform.matrix);
+    } else {
+      reticle3D.visible = false;
+    }
+  }
+
+  renderer.render(renderer.xr.getScene(), renderer.xr.getCamera());
+}
+
+// Place model on select
+async function onXRSelect(){
+  if (!queuedItem){
+    setStatus('Queue a model first.');
+    return;
+  }
+  if (!reticle3D || !reticle3D.visible){
+    setStatus('Point at a plane until the reticle appears.');
+    return;
+  }
+  try{
+    const glb = await gltf.loadAsync(queuedItem.url);
+    const obj = glb.scene;
+    obj.scale.setScalar(queuedItem.scale ?? 1);
+    // Take reticle transform
+    obj.matrixAutoUpdate = false;
+    obj.matrix.copy(reticle3D.matrix);
+    obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
+    obj.matrixAutoUpdate = true;
+
+    renderer.xr.getScene().add(obj);
+    placedInAR.push(obj);
+    lastPlaced = obj;
+    setStatus('Placed: ' + (queuedItem.name || queuedItem.url));
+  }catch(e){
+    setStatus('⚠ Load error: ' + e.message);
+  }
+}
+
+// In-AR HUD actions act on lastPlaced
+const clampScale = (s)=> Math.min(5, Math.max(0.05, s));
+
+ui.rotL.addEventListener('click', ()=> {
+  if (lastPlaced){ lastPlaced.rotation.y += THREE.MathUtils.degToRad(-10); }
+});
+ui.rotR.addEventListener('click', ()=> {
+  if (lastPlaced){ lastPlaced.rotation.y += THREE.MathUtils.degToRad(10); }
+});
+ui.scaleUp.addEventListener('click', ()=> {
+  if (lastPlaced){
+    const s = clampScale(lastPlaced.scale.x * 1.1);
+    lastPlaced.scale.setScalar(s);
+  }
+});
+ui.scaleDn.addEventListener('click', ()=> {
+  if (lastPlaced){
+    const s = clampScale(lastPlaced.scale.x / 1.1);
+    lastPlaced.scale.setScalar(s);
+  }
+});
+ui.done.addEventListener('click', async ()=>{
+  // End AR session cleanly
+  try{
+    if (xrSession){
+      renderer.setAnimationLoop(null);
+      hitTestSource?.cancel(); hitTestSource = null;
+      await xrSession.end();
+      xrSession = null;
+      ui.arHud.style.display = 'none';
+      ui.reticle.style.display = 'none';
+      setStatus('AR ended.');
+    }
+  }catch(e){
+    setStatus('⚠ Could not end AR: ' + e.message);
+  }
+});
+
+// ---------- Helpers ----------
+function resizeRenderer(){
+  const w = window.innerWidth;
+  const h = window.innerHeight - 160; // rough space for controls + bottomBar
+  renderer.setSize(w, Math.max(280, h), false);
+  camera.aspect = w / Math.max(280, h);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizeRenderer);
 </script>
 </body>
 </html>
