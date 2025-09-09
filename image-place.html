@@ -1,205 +1,161 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Place Models on Photo</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Event Stager — Image Placement</title>
 <style>
   :root{color-scheme:dark}
-  html,body{height:100%;margin:0;background:#0b0b0f;color:#eaeaf1;
-    font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  /* Top HUD */
-  #hud{position:fixed;inset:0 0 auto 0;display:flex;gap:8px;flex-wrap:wrap;
-       padding:10px 12px;background:rgba(10,10,12,.88);backdrop-filter:saturate(1.3) blur(6px);z-index:5}
-  select,button,input[type="file"]{height:44px;border-radius:12px;border:1px solid #2a2e36;background:#14161b;color:#fff;padding:0 12px}
+  html,body{margin:0;height:100%;background:#0b0b0f;font:15px system-ui,-apple-system,Segoe UI,Roboto;color:#e8eaf1}
+  /* Background photo */
+  #bgWrap{position:fixed;inset:0;display:grid;place-items:center;background:#000}
+  #bg{max-width:100vw;max-height:100vh;object-fit:contain}
+  /* WebGL */
+  canvas{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none}
+  /* HUD */
+  #hud{position:fixed;left:0;right:0;top:0;display:flex;gap:8px;align-items:center;padding:10px 12px;
+       background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,.22));z-index:5}
+  select,button,input[type=file]{height:42px;border-radius:12px;border:1px solid #2a2e36;background:#151821;color:#fff;padding:0 12px}
   select{min-width:160px}
   button.primary{background:#2b6cff;border-color:#2b6cff}
-  button.ghost{background:#191b22}
-  button:disabled{opacity:.45}
+  button.ghost{background:#11131a}
   #right{margin-left:auto;display:flex;gap:8px}
-  #toggleUI{position:fixed;right:12px;bottom:18px;height:52px;border-radius:26px;padding:0 16px;z-index:6}
-  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:rgba(0,0,0,.55);
-        padding:8px 12px;border-radius:12px;font-size:13px;z-index:4;display:none}
-  canvas{display:block;width:100vw;height:100vh;touch-action:none}
-  /* Small help pill */
-  #help{position:fixed;left:12px;bottom:18px;font-size:12px;opacity:.8}
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:rgba(0,0,0,.65);
+         padding:10px 14px;border-radius:12px;font-size:13px;z-index:6;display:none}
+  #hint{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:rgba(0,0,0,.55);
+        padding:8px 12px;border-radius:12px;font-size:13px;z-index:6;display:none}
 </style>
 
-<!-- Local import map -->
+<!-- Import map (LOCAL paths, like index-multi.html) -->
 <script type="importmap">
 {
-  "imports": {
-    "three": "./lib/three/build/three.module.js",
-    "three/addons/": "./lib/three/examples/jsm/"
+  "imports":{
+    "three":"./lib/three/build/three.module.js",
+    "three/addons/":"./lib/three/examples/jsm/"
   }
 }
 </script>
 </head>
 <body>
 
+<div id="bgWrap"><img id="bg" alt="Upload a photo to start"/></div>
+
 <div id="hud">
-  <label for="file" style="opacity:.85;align-self:center">Photo</label>
-  <input id="file" type="file" accept="image/*" />
+  <label for="photo" style="opacity:.85">Photo</label>
+  <input id="photo" type="file" accept="image/*" capture="environment"/>
 
-  <select id="catSel"><option>All categories</option></select>
-  <select id="modelSel"><option>Loading models…</option></select>
+  <label style="margin-left:6px;opacity:.85">Category</label>
+  <select id="catSel"><option>Loading…</option></select>
 
-  <button id="btnPlace" class="primary">Tap to place</button>
-  <button id="btnUndo"  class="ghost">↶ Undo</button>
+  <label style="opacity:.85">Model</label>
+  <select id="modelSel"><option>—</option></select>
+
+  <button id="btnAdd" class="primary">+ Add</button>
+  <button id="btnUndo" class="ghost">↺ Undo</button>
   <button id="btnClear" class="ghost">🗑 Clear</button>
 
   <div id="right">
-    <button id="btnSnap" class="ghost">💾 Save</button>
+    <button id="btnSave" class="ghost">💾 Save PNG</button>
+    <button id="btnUi"   class="ghost">👁 Hide UI</button>
   </div>
 </div>
 
-<div id="hint">Tap on the photo to place the model. Drag=move · Pinch=scale · Twist=rotate</div>
-<button id="toggleUI" class="ghost">👁 Hide UI</button>
-<div id="help">Tip: two-finger rotate to change floor angle</div>
-
-<canvas id="c"></canvas>
+<div id="hint">Drag = move · Pinch = scale · Twist = rotate</div>
+<div id="toast"></div>
 
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader }     from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader }    from 'three/addons/loaders/DRACOLoader.js';
+import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-const cvs = document.getElementById('c');
-const file = document.getElementById('file');
-const catSel = document.getElementById('catSel');
-const modelSel = document.getElementById('modelSel');
-const btnPlace = document.getElementById('btnPlace');
-const btnUndo = document.getElementById('btnUndo');
-const btnClear = document.getElementById('btnClear');
-const btnSnap = document.getElementById('btnSnap');
-const toggleUI = document.getElementById('toggleUI');
-const hud = document.getElementById('hud');
-const hint = document.getElementById('hint');
+const $ = id => document.getElementById(id);
+const photo   = $('photo');
+const bgImg   = $('bg');
+const hud     = $('hud');
+const toastEl = $('toast');
+const hintEl  = $('hint');
+const catSel  = $('catSel');
+const modelSel= $('modelSel');
+const btnAdd  = $('btnAdd');
+const btnUndo = $('btnUndo');
+const btnClear= $('btnClear');
+const btnSave = $('btnSave');
+const btnUi   = $('btnUi');
 
-let placing = false;        // if true, next tap places selected model
-let dragging = false;       // dragging a placed model
-let active = null;          // currently selected object
-let startDist = 0, startScale = 1, startRot = 0, startAngle = 0;
+function toast(msg, ms=1800){ toastEl.textContent=msg; toastEl.style.display='block'; clearTimeout(toastEl._t); toastEl._t=setTimeout(()=>toastEl.style.display='none', ms); }
+function showHint(on){ hintEl.style.display = on ? 'block' : 'none'; }
 
-const renderer = new THREE.WebGLRenderer({canvas: cvs, antialias:true, preserveDrawingBuffer:true});
+// --------- Three scene ----------
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 200);
-camera.position.set(0, 2.2, 5);
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.01, 100);
+camera.position.set(0, 1.6, 3);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.enablePan = true;
-controls.target.set(0,0,0);
+// Lighting & soft ground
+scene.add(new THREE.HemisphereLight(0xffffff,0x444466,0.9));
+const dir = new THREE.DirectionalLight(0xffffff,1.1); dir.position.set(2,4,2); dir.castShadow=true; scene.add(dir);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.ShadowMaterial({opacity:0.3}));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
 
-// Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-dir.position.set(3,5,2); dir.castShadow = true; scene.add(dir);
-
-// Background photo (as plane so we can keep perspective stable)
-const photoGroup = new THREE.Group(); scene.add(photoGroup);
-const photoMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(16, 9),
-  new THREE.MeshBasicMaterial({color:0x222, side:THREE.DoubleSide})
-);
-photoGroup.add(photoMesh);
-photoGroup.position.z = -0.01; // just behind the 3D floor
-
-// Ground (the “floor” where we raycast to place)
-const ground = new THREE.GridHelper(20, 20, 0x4da3ff, 0x2a2e36);
-ground.position.y = 0;
-scene.add(ground);
-const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0); // y=0
-
-// Loaders
+// Loaders (LOCAL DRACO path!)
 const draco = new DRACOLoader();
 draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
 const gltf = new GLTFLoader(); gltf.setDRACOLoader(draco);
 
-// Catalog
-let fullCatalog = [];       // all items
-let catalog = [];           // filtered by category
-const cache = new Map();    // url -> THREE.Group (source)
-const placed = [];          // stack of placed objects (for Undo)
+// Catalog with categories
+const CATALOG_URL = './models/models.json';
+let catalog = [];          // flat list
+let byCat   = new Map();   // category -> array
+const cache = new Map();   // url -> THREE.Group
+const placed= [];          // stack of added objects
+let active  = null;        // last selected
 
-async function loadCatalog(){
+async function loadCatalog() {
   try{
-    const r = await fetch('./models/models.json', {cache:'no-store'});
-    const j = await r.json();
-    fullCatalog = Array.isArray(j) ? j : (j.models || []);
-    buildCategoryOptions(fullCatalog);
-    applyCategoryFilter();
+    const r = await fetch(CATALOG_URL, { cache:'no-store' });
+    const data = await r.json();
+    catalog = Array.isArray(data) ? data : (data.models || []);
+    // bucket by category (fallback "General")
+    byCat.clear();
+    for (const it of catalog){
+      const cat = (it.category || 'General').trim();
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(it);
+    }
+    // populate category select
+    catSel.innerHTML = '';
+    [...byCat.keys()].sort().forEach(c=>{
+      const o=document.createElement('option'); o.value=c; o.textContent=c; catSel.appendChild(o);
+    });
+    rebuildModelList();
+    toast(`Catalog ready (${catalog.length})`);
   }catch(e){
-    modelSel.innerHTML = '<option>Failed to load catalog</option>';
+    catSel.innerHTML = '<option>Failed</option>';
+    modelSel.innerHTML = '<option>—</option>';
+    toast('Failed to load models.json');
   }
 }
-
-function buildCategoryOptions(list){
-  const cats = ['All'];
-  for (const it of list){
-    if (it.category && !cats.includes(it.category)) cats.push(it.category);
-  }
-  catSel.innerHTML = '';
-  for (const c of cats){
-    const opt = document.createElement('option');
-    opt.value = c; opt.textContent = (c==='All'?'All categories':c);
-    catSel.appendChild(opt);
-  }
-}
-
-function applyCategoryFilter(){
-  const sel = catSel.value || 'All';
-  catalog = (sel==='All')
-    ? fullCatalog
-    : fullCatalog.filter(it=> (it.category||'').toLowerCase() === sel.toLowerCase());
+function rebuildModelList(){
+  const list = byCat.get(catSel.value) || [];
   modelSel.innerHTML = '';
-  for (const it of catalog){
-    const o = document.createElement('option');
-    o.value = it.url; o.textContent = it.name || it.url;
-    modelSel.appendChild(o);
-  }
+  list.forEach((m,i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=m.name||m.url; modelSel.appendChild(o); });
 }
-
-catSel.addEventListener('change', applyCategoryFilter);
+catSel.addEventListener('change', rebuildModelList);
 await loadCatalog();
 
-// Image upload -> set as photo plane texture, fit view
-file.addEventListener('change', async (e)=>{
-  const f = e.target.files?.[0]; if (!f) return;
-  const url = URL.createObjectURL(f);
-  const tx = await new THREE.TextureLoader().loadAsync(url);
-  tx.colorSpace = THREE.SRGBColorSpace; tx.needsUpdate = true;
-  photoMesh.material.map = tx; photoMesh.material.needsUpdate = true;
-
-  // Compute plane aspect to match image
-  const img = new Image(); img.src = url; await img.decode();
-  const aspect = img.width / img.height;
-  const height = 9; // keep our base height
-  const width = height * aspect;
-  photoMesh.geometry.dispose();
-  photoMesh.geometry = new THREE.PlaneGeometry(width, height);
-
-  // Center the view nicely
-  camera.position.set(0, 2.2, 5);
-  controls.target.set(0,0,0);
-  controls.update();
-  hint.style.display = 'block';
-  setTimeout(()=>{ hint.style.display='none'; }, 4500);
-});
-
-// ---------- Placement helpers ----------
-async function ensureLoaded(url){
-  if (cache.has(url)) return cache.get(url);
-  const { scene:root } = await gltf.loadAsync(url);
-  cache.set(url, root);
-  return root;
+// Preload + clone helpers
+async function ensureLoaded(item){
+  if (cache.has(item.url)) return cache.get(item.url);
+  const gl = await gltf.loadAsync(item.url);
+  cache.set(item.url, gl.scene);
+  return gl.scene;
 }
-function cloneFrom(url, item){
-  const src = cache.get(url);
+function cloneFrom(item){
+  const src = cache.get(item.url);
   const obj = src.clone(true);
   const s = item.scale ?? 1; obj.scale.setScalar(s);
   if (item.rotation) obj.rotation.set(...item.rotation);
@@ -208,153 +164,130 @@ function cloneFrom(url, item){
   return obj;
 }
 
-// Raycast from screen -> plane Y=0
-const raycaster = new THREE.Raycaster();
-const pt = new THREE.Vector2();
+// ---------- Background photo ----------
+photo.addEventListener('change', ()=>{
+  const f = photo.files?.[0]; if(!f) return;
+  const url = URL.createObjectURL(f);
+  bgImg.src = url;
+  bgImg.onload = ()=> URL.revokeObjectURL(url);
+});
 
-function screenToPlane(x,y){
-  pt.x =  (x / renderer.domElement.clientWidth)  * 2 - 1;
-  pt.y = -(y / renderer.domElement.clientHeight) * 2 + 1;
-  raycaster.setFromCamera(pt, camera);
-  const hit = new THREE.Vector3();
-  const ok = raycaster.ray.intersectPlane(groundPlane, hit);
-  return ok ? hit : null;
+// ---------- Placement gestures ----------
+let touch = {mode:'idle', p1:null, p2:null, startScale:1, startRotY:0};
+
+function screenToGround(x,y){
+  const ndc = new THREE.Vector2((x/innerWidth)*2-1, -(y/innerHeight)*2+1);
+  const ray = new THREE.Raycaster(); ray.setFromCamera(ndc,camera);
+  const hit = ray.intersectObject(ground, false)[0];
+  return hit?.point || null;
 }
-
-// UI actions
-btnPlace.onclick = ()=>{ placing = true; hint.style.display='block'; };
-btnUndo.onclick = ()=>{
-  const o = placed.pop();
-  if (o){ scene.remove(o); if (active===o) active=null; }
-};
-btnClear.onclick = ()=>{
-  while(placed.length){ const o=placed.pop(); scene.remove(o); }
-  active=null;
-};
-btnSnap.onclick = ()=>{
-  // Save current canvas as PNG (works in this non-WebXR page)
-  const a=document.createElement('a');
-  a.href = renderer.domElement.toDataURL('image/png');
-  a.download = `image-demo-${Date.now()}.png`;
-  a.click();
-};
-toggleUI.onclick = ()=>{
-  if (hud.style.display !== 'none'){
-    hud.style.display = 'none'; toggleUI.textContent = '👁 Show UI';
-  } else {
-    hud.style.display = ''; toggleUI.textContent = '👁 Hide UI';
-  }
-};
-
-// Pointer + touch (drag / place / scale / rotate)
-const dragState = { id: -1, offset: new THREE.Vector3() };
-
-function pickPlaced(x,y){
-  // quick pick: last placed that’s nearest the ray; simple and fast
-  if (!placed.length) return null;
-  pt.x =  (x / renderer.domElement.clientWidth)  * 2 - 1;
-  pt.y = -(y / renderer.domElement.clientHeight) * 2 + 1;
-  raycaster.setFromCamera(pt, camera);
-  let best=null, bestD=Infinity;
-  for (const obj of placed){
-    const pos = new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld);
-    const d = raycaster.ray.distanceToPoint(pos);
-    if (d < bestD){ bestD = d; best = obj; }
-  }
-  return (bestD < 0.6) ? best : null; // threshold
-}
-
-renderer.domElement.addEventListener('pointerdown', (e)=>{
-  renderer.domElement.setPointerCapture(e.pointerId);
-
-  // two-finger start: remember spacing/angle for scale/rotate
-  if (e.pointerType === 'touch' && e.isPrimary === false){
-    // handled by touch listeners (we need two touches)
-    return;
-  }
-
-  const hit = screenToPlane(e.clientX, e.clientY);
-  if (!hit) return;
-
-  if (placing){
-    const item = catalog[modelSel.selectedIndex];
-    if (!item) return;
-    ensureLoaded(item.url).then(()=>{
-      const obj = cloneFrom(item.url, item);
-      obj.position.copy(hit);
-      scene.add(obj); placed.push(obj); active=obj;
-      placing = false; hint.style.display='none';
-    });
-  } else {
-    const pick = pickPlaced(e.clientX, e.clientY);
-    if (pick){
-      active = pick;
-      dragState.id = e.pointerId;
-      dragState.offset.copy(active.position).sub(hit);
-      dragging = true;
-    } else {
-      active = null;
-    }
-  }
-});
-
-renderer.domElement.addEventListener('pointermove', (e)=>{
-  if (!dragging || dragState.id !== e.pointerId || !active) return;
-  const hit = screenToPlane(e.clientX, e.clientY); if (!hit) return;
-  active.position.copy(hit).add(dragState.offset);
-});
-
-renderer.domElement.addEventListener('pointerup', (e)=>{
-  if (dragState.id === e.pointerId){ dragging=false; dragState.id=-1; }
-});
 
 renderer.domElement.addEventListener('touchstart', (e)=>{
   if (!active) return;
-
-  if (e.touches.length === 2){
-    // pinch + twist
-    startDist  = dist2(e.touches);
-    startAngle = angle2(e.touches);
-    startScale = active.scale.x;
-    startRot   = active.rotation.y;
+  if (e.touches.length===1){
+    touch.mode='drag';
+    touch.p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    touch.anchor = screenToGround(touch.p1.x, touch.p1.y) || active.position.clone();
+  } else if (e.touches.length===2){
+    touch.mode='transform';
+    touch.p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    touch.p2 = {x:e.touches[1].clientX, y:e.touches[1].clientY};
+    touch.startD = Math.hypot(touch.p2.x-touch.p1.x, touch.p2.y-touch.p1.y);
+    touch.startA = Math.atan2(touch.p2.y-touch.p1.y, touch.p2.x-touch.p1.x);
+    touch.startScale = active.scale.x;
+    touch.startRotY  = active.rotation.y;
   }
 },{passive:true});
 
 renderer.domElement.addEventListener('touchmove', (e)=>{
   if (!active) return;
-  if (e.touches.length === 2){
-    const d = dist2(e.touches);
-    const a = angle2(e.touches);
+  if (touch.mode==='drag' && e.touches.length===1){
+    const pt = screenToGround(e.touches[0].clientX, e.touches[0].clientY);
+    if (pt){ active.position.lerp(pt, 0.3); }
+  } else if (touch.mode==='transform' && e.touches.length===2){
+    const p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    const p2 = {x:e.touches[1].clientX, y:e.touches[1].clientY};
+    const d  = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+    const a  = Math.atan2(p2.y-p1.y, p2.x-p1.x);
     // scale
-    const s = THREE.MathUtils.clamp(startScale * (d / startDist), 0.05, 10);
+    let s = touch.startScale * (d / touch.startD);
+    s = Math.min(Math.max(s, 0.05), 20);
     active.scale.setScalar(s);
-    // rotate around Y by twist delta
-    active.rotation.y = startRot + (a - startAngle);
+    // rotate
+    active.rotation.y = touch.startRotY + (a - touch.startA);
   }
 },{passive:true});
 
-function dist2(t){
-  const dx = t[0].clientX - t[1].clientX;
-  const dy = t[0].clientY - t[1].clientY;
-  return Math.hypot(dx,dy);
-}
-function angle2(t){
-  return Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
-}
+renderer.domElement.addEventListener('touchend', ()=>{ touch.mode='idle'; },{passive:true});
 
-// Render loop
-function loop(){
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
-}
-loop();
+// tap to make last placed active
+renderer.domElement.addEventListener('click', ()=>{
+  if (placed.length){ active = placed[placed.length-1]; showHint(true); }
+});
 
-// Resize
+// ---------- Buttons ----------
+btnAdd.onclick = async ()=>{
+  const list = byCat.get(catSel.value) || [];
+  const item = list[ Number(modelSel.value) ];
+  if (!item){ toast('Choose a model'); return; }
+  try{
+    toast('Loading model…');
+    await ensureLoaded(item);
+    const o = cloneFrom(item);
+    o.position.set(0,0,0);
+    scene.add(o);
+    placed.push(o);
+    active = o;
+    showHint(true);
+    toast('Model added');
+  }catch(e){
+    console.error(e);
+    toast('Model load failed');
+  }
+};
+
+btnUndo.onclick = ()=>{
+  const o = placed.pop();
+  if (o){ scene.remove(o); if (o===active) active=null; toast('Undone'); }
+};
+
+btnClear.onclick = ()=>{
+  while(placed.length){ scene.remove(placed.pop()); }
+  active=null; toast('Cleared');
+};
+
+btnUi.onclick = ()=>{
+  const hidden = hud.style.display==='none';
+  hud.style.display = hidden ? 'flex' : 'none';
+  btnUi.textContent = hidden ? '👁 Hide UI' : '👁 Show UI';
+};
+
+btnSave.onclick = ()=>{
+  // Composite BG photo + WebGL canvas into one PNG
+  const w = bgImg.naturalWidth || innerWidth;
+  const h = bgImg.naturalHeight || innerHeight;
+  const out = document.createElement('canvas'); out.width=w; out.height=h;
+  const ctx = out.getContext('2d');
+  // draw bg (fit contain)
+  const ratio = Math.min(w/(bgImg.width||w), h/(bgImg.height||h)); // fallback
+  // Easier: draw natural image to full canvas
+  if (bgImg.src) ctx.drawImage(bgImg, 0, 0, w, h);
+  // draw 3D canvas scaled to the same size
+  const glURL = renderer.domElement.toDataURL('image/png');
+  const im = new Image(); im.onload = ()=>{
+    ctx.drawImage(im, 0, 0, w, h);
+    const a=document.createElement('a'); a.href=out.toDataURL('image/png'); a.download=`staged-${Date.now()}.png`; a.click();
+  };
+  im.src = glURL;
+};
+
+// ---------- Render loop & resize ----------
+function tick(){ renderer.render(scene,camera); requestAnimationFrame(tick); }
+tick();
+
 addEventListener('resize', ()=>{
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
 });
 </script>
 </body>
