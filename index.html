@@ -1,214 +1,90 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-  />
-  <title>AR Catalog — Single Model</title>
-  <style>
-    :root { color-scheme: dark; }
-    body, html { margin:0; height:100%; background:#0b0b0c; color:#e8e8ea; font-family: system-ui, sans-serif; }
-    #topbar { position:fixed; inset:0 0 auto 0; padding:10px 12px; background:#111; border-bottom:1px solid #222; display:flex; gap:8px; align-items:center; z-index:2; }
-    label { opacity:.9; }
-    select { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a2a2e; background:#161618; color:#e8e8ea; }
-    button { padding:12px 18px; border:0; border-radius:14px; background:#2d6df6; color:white; font-weight:600; }
-    #status { position:fixed; left:8px; right:8px; top:52px; font:12px/1.4 monospace; opacity:.85; z-index:2; }
-    #stage { position:absolute; inset:0; }
-    #enterAR { position:fixed; left:50%; transform:translateX(-50%); bottom:24px; }
-    canvas { display:block; width:100%; height:100%; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>The New Innings Planner — AR Demos</title>
+<meta name="theme-color" content="#0b0b0f" />
+<style>
+  :root{color-scheme:dark}
+  html,body{height:100%;margin:0;background:#0b0b0f;color:#eaeaf1;
+    font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{min-height:100%;display:grid;grid-template-rows:auto 1fr auto}
+  header{padding:28px 18px 10px;display:flex;align-items:center;gap:14px}
+  #logo{height:60px;width:auto;object-fit:contain}
+  .brand{display:flex;flex-direction:column}
+  .brand h1{margin:0;font-weight:700;font-size:22px;letter-spacing:.2px}
+  .brand small{opacity:.7;font-size:12px}
+  main{padding:14px 18px 28px}
+  .hero{margin:16px 0 22px;padding:16px;border-radius:16px;
+    background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid #242632}
+  .hero p{margin:0;opacity:.88}
+  .grid{display:grid;gap:12px}
+  @media(min-width:680px){ .grid{grid-template-columns:repeat(2,1fr)} main{max-width:960px;margin:0 auto}}
+  .card{border:1px solid #242632;background:#12141a;border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+  .card h2{margin:0;padding:14px 16px 6px;font-size:18px}
+  .card p{margin:0;padding:0 16px 16px;opacity:.85}
+  .actions{margin-top:auto;padding:14px 16px;display:flex;gap:10px}
+  a.btn{flex:1;text-align:center;text-decoration:none;color:#fff;display:inline-flex;justify-content:center;align-items:center;height:48px;border-radius:12px;border:1px solid #2a2e36;background:#191b22}
+  a.btn.primary{background:#2b6cff;border-color:#2b6cff}
+  footer{padding:18px;color:#a6aab4;opacity:.8;text-align:center;font-size:12px}
+  /* graceful fallback if logo fails to load */
+  #logo[hidden]+.brand .tagline::before{content:"The New Innings Planner";font-weight:700;display:block;margin-bottom:4px}
+</style>
 </head>
 <body>
-  <div id="topbar">
-    <label for="modelSelect">Model</label>
-    <select id="modelSelect"><option>Loading…</option></select>
-    <button id="loadBtn">Add</button>
-  </div>
-  <div id="status">boot…</div>
-  <script>
-  // Show uncaught errors in the status bar
-  (function () {
-    const s = document.getElementById('status');
-    window.addEventListener('error', e => s && (s.textContent = 'Error: ' + e.message));
-    window.addEventListener('unhandledrejection', e => s && (s.textContent = 'Error: ' + (e.reason?.message || e.reason)));
-  })();
+<div class="wrap">
+
+  <header>
+    <!-- Replace src with your actual logo path -->
+    <img id="logo" src="./assets/tnip-logo.png" alt="The New Innings Planner logo"
+         onerror="this.hidden=true" />
+    <div class="brand">
+      <h1>The New Innings Planner</h1>
+      <small class="tagline">Immersive décor previews for your venue</small>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p>Select a mode below. You can always return to this page from your browser’s back button.</p>
+    </section>
+
+    <section class="grid">
+      <!-- Real-time AR -->
+      <article class="card">
+        <h2>Give Real-Time Demo</h2>
+        <p>Place and edit 3D décor live with your phone camera. Queue multiple items, scale and rotate with gestures.</p>
+        <div class="actions">
+          <a class="btn primary" href="./index-multi.html">Open Live AR</a>
+          <a class="btn" href="./models/models.json" target="_blank" rel="noopener">View Catalog</a>
+        </div>
+      </article>
+
+      <!-- From photos -->
+      <article class="card">
+        <h2>Create a Demo From Pics</h2>
+        <p>Load a venue photo and position 3D models on top to mock up layouts before the site visit.</p>
+        <div class="actions">
+          <a class="btn primary" href="./image-place.html">Open Photo Mode</a>
+          <a class="btn" href="./README.html" target="_blank" rel="noopener">How it works</a>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    © <span id="y"></span> The New Innings Planner · All rights reserved
+  </footer>
+
+</div>
+
+<script>
+  // small nicety: current year + iOS 100vh fix
+  document.getElementById('y').textContent = new Date().getFullYear();
+  const setVh = () => document.documentElement.style.setProperty('--vh', innerHeight * 0.01 + 'px');
+  addEventListener('resize', setVh, {passive:true}); setVh();
 </script>
-  <div id="stage"></div>
-  <button id="enterAR">📷 Enter AR</button>
 
-  <!-- map bare specifier "three" to your local file -->
-<script type="importmap">
-{
-  "imports": {
-    "three": "./lib/three/build/three.module.js"
-  }
-}
-</script>
-  <script type="module">
-    // --- Local three.js imports
-    import * as THREE from 'three'; // <-- now resolved by the import map
-    import { GLTFLoader } from './lib/three/examples/jsm/loaders/GLTFLoader.js';
-    import { DRACOLoader } from './lib/three/examples/jsm/loaders/DRACOLoader.js';
-
-    // ---------- UI helpers
-    const statusEl = document.getElementById('status');
-    const selectEl = document.getElementById('modelSelect');
-    const addBtn   = document.getElementById('loadBtn');
-    const enterBtn = document.getElementById('enterAR');
-    function log(msg){ console.log(msg); statusEl.textContent = msg; }
-
-    // ---------- Three basics (non-AR preview background kept black)
-    const stage = document.getElementById('stage');
-    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-    renderer.setPixelRatio(devicePixelRatio);
-    renderer.setSize(innerWidth, innerHeight);
-    stage.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
-    camera.position.set(0, 1.2, 2.2);
-
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
-    scene.add(hemi);
-
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-    dir.position.set(2, 4, 2);
-    scene.add(dir);
-
-    window.addEventListener('resize', ()=>{
-      camera.aspect = innerWidth/innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-    });
-
-    function tick(){ renderer.render(scene, camera); requestAnimationFrame(tick); }
-    tick();
-
-    // ---------- GLTF + DRACO
-    const gltfLoader = new GLTFLoader();
-    const draco = new DRACOLoader();
-    // IMPORTANT: all three draco_* files are in this folder
-    draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-    draco.setDecoderConfig({ type:'wasm' });
-    gltfLoader.setDRACOLoader(draco);
-
-    let currentObject = null;
-    async function loadModel(url){
-      // ensure relative path from this page
-      const abs = new URL(url, location.href).href;
-      log('Loading model… ' + url);
-      try{
-        const gltf = await gltfLoader.loadAsync(abs);
-        const obj = gltf.scene;
-        obj.traverse(n=>{ if(n.isMesh){ n.castShadow = true; n.receiveShadow = true; }});
-        // clear old
-        if(currentObject) scene.remove(currentObject);
-        currentObject = obj;
-        // center + scale to reasonable preview
-        new THREE.Box3().setFromObject(obj).getCenter(obj.position).multiplyScalar(-1);
-        scene.add(obj);
-        log('Model loaded ✅');
-      }catch(err){
-        console.error(err);
-        log('Model load error: ' + (err?.message || err));
-      }
-    }
-
-    // ---------- Catalog
-    log('Booting…');
-    let catalog = [];
-    try{
-      const res = await fetch('./models/models.json');  // RELATIVE path is crucial
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      catalog = await res.json();
-      // Support both: [ {...} ] or { models:[...] }
-      if(Array.isArray(catalog) === false && Array.isArray(catalog.models)) catalog = catalog.models;
-
-      selectEl.innerHTML = '';
-      for(const item of catalog){
-        const opt = document.createElement('option');
-        opt.value = item.url;
-        opt.textContent = item.name;
-        selectEl.appendChild(opt);
-      }
-      log(`Catalog loaded ✅ (${catalog.length} items)`);
-    }catch(e){
-      log('Catalog load error: ' + e.message);
-      selectEl.innerHTML = '<option>Failed to load catalog</option>';
-    }
-
-    addBtn.onclick = ()=> {
-      const url = selectEl.value;
-      if(url) loadModel(url);
-    };
-
-    // ---------- WebXR AR (single placement)
-    let xrRefSpace, viewerSpace, hitTestSource = null, arSceneRoot = null;
-
-    enterBtn.onclick = async () => {
-      if (!navigator.xr) { log('WebXR not available'); return; }
-      const supported = await navigator.xr.isSessionSupported('immersive-ar');
-      if (!supported) { log('immersive-ar not supported'); return; }
-
-      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
-      renderer.xr.enabled = true;
-      renderer.xr.setReferenceSpaceType('local');
-      await renderer.xr.setSession(session);
-
-      xrRefSpace = await session.requestReferenceSpace('local');
-      viewerSpace = await session.requestReferenceSpace('viewer');
-      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-
-      // AR scene root
-      arSceneRoot = new THREE.Group();
-      scene.add(arSceneRoot);
-
-      // If there’s a model already loaded, clone into AR root on first tap
-      let placed = false;
-      const onSelect = () => {
-        if (reticle.visible && currentObject && !placed) {
-          const clone = currentObject.clone(true);
-          clone.position.copy(reticle.position);
-          clone.quaternion.copy(reticle.quaternion);
-          arSceneRoot.add(clone);
-          placed = true;
-        }
-      };
-      session.addEventListener('select', onSelect);
-
-      // Simple reticle
-      const reticleGeo = new THREE.RingGeometry(0.12, 0.14, 32).rotateX(-Math.PI/2);
-      const reticleMat = new THREE.MeshBasicMaterial({ color: 0x4da3ff });
-      const reticle = new THREE.Mesh(reticleGeo, reticleMat);
-      reticle.matrixAutoUpdate = false;
-      reticle.visible = false;
-      scene.add(reticle);
-
-      renderer.setAnimationLoop((t, frame) => {
-        if (frame) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length) {
-            const pose = hitTestResults[0].getPose(xrRefSpace);
-            reticle.visible = true;
-            reticle.matrix.fromArray(pose.transform.matrix);
-          } else {
-            reticle.visible = false;
-          }
-        }
-        renderer.render(scene, camera);
-      });
-
-      session.addEventListener('end', () => {
-        renderer.setAnimationLoop(null);
-        renderer.xr.enabled = false;
-        scene.remove(arSceneRoot);
-        reticle?.removeFromParent();
-        log('AR session ended');
-      });
-    };
-  </script>
 </body>
 </html>
-
