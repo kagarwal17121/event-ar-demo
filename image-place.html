@@ -2,31 +2,60 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Event Stager — Image Placement</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Event Stager — Image Placement (Mobile)</title>
 <style>
-  :root{color-scheme:dark}
-  html,body{margin:0;height:100%;background:#0b0b0f;font:15px system-ui,-apple-system,Segoe UI,Roboto;color:#e8eaf1}
+  :root{ color-scheme:dark }
+  html,body{ margin:0; height:100%; background:#0b0b0f; font:15px system-ui,-apple-system,Segoe UI,Roboto; color:#e8eaf1; }
+
   /* Background photo */
-  #bgWrap{position:fixed;inset:0;display:grid;place-items:center;background:#000}
-  #bg{max-width:100vw;max-height:100vh;object-fit:contain}
+  #bgWrap{ position:fixed; inset:0; display:grid; place-items:center; background:#000; }
+  #bg{ max-width:100vw; max-height:100vh; object-fit:contain; }
+
   /* WebGL */
-  canvas{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none}
-  /* HUD */
-  #hud{position:fixed;left:0;right:0;top:0;display:flex;gap:8px;align-items:center;padding:10px 12px;
-       background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,.22));z-index:5}
-  select,button,input[type=file]{height:42px;border-radius:12px;border:1px solid #2a2e36;background:#151821;color:#fff;padding:0 12px}
-  select{min-width:160px}
-  button.primary{background:#2b6cff;border-color:#2b6cff}
-  button.ghost{background:#11131a}
-  #right{margin-left:auto;display:flex;gap:8px}
-  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:rgba(0,0,0,.65);
-         padding:10px 14px;border-radius:12px;font-size:13px;z-index:6;display:none}
-  #hint{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:rgba(0,0,0,.55);
-        padding:8px 12px;border-radius:12px;font-size:13px;z-index:6;display:none}
+  canvas{ position:fixed; inset:0; display:block; width:100vw; height:100vh; touch-action:none; }
+
+  /* Bottom control panel */
+  #panel{
+    position:fixed; left:0; right:0; bottom:0; z-index:5;
+    display:flex; flex-direction:column; gap:8px;
+    padding:10px 12px 12px;
+    background:linear-gradient(0deg,rgba(0,0,0,.86),rgba(0,0,0,.40));
+    backdrop-filter:saturate(1.3) blur(6px);
+  }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  /* Allow horizontal scroll if things don’t fit */
+  .row.scroller{ overflow-x:auto; padding-bottom:2px; }
+  .row.scroller::-webkit-scrollbar{ height:6px }
+  .row.scroller::-webkit-scrollbar-thumb{ background:#2a2e36; border-radius:999px }
+
+  select,button,input[type=file]{
+    height:44px; border-radius:12px; border:1px solid #2a2e36; background:#151821; color:#fff; padding:0 12px;
+  }
+  select{ min-width:170px; }
+  button.primary{ background:#2b6cff; border-color:#2b6cff; }
+  button.ghost{ background:#11131a; }
+  button.icon{ width:44px; padding:0 }
+  button:active{ transform:translateY(1px) }
+
+  #toast{
+    position:fixed; left:50%; bottom:84px; transform:translateX(-50%);
+    background:rgba(0,0,0,.65); padding:10px 14px; border-radius:12px; font-size:13px;
+    z-index:6; display:none;
+  }
+  #hint{
+    position:fixed; left:50%; bottom:140px; transform:translateX(-50%);
+    background:rgba(0,0,0,.55); padding:8px 12px; border-radius:12px; font-size:13px; z-index:6; display:none;
+  }
+
+  /* Compact on very small screens */
+  @media (max-width:380px){
+    select{ min-width:140px }
+    button{ height:40px }
+  }
 </style>
 
-<!-- Import map (LOCAL paths, like index-multi.html) -->
+<!-- LOCAL import map (same as AR page) -->
 <script type="importmap">
 {
   "imports":{
@@ -38,25 +67,35 @@
 </head>
 <body>
 
-<div id="bgWrap"><img id="bg" alt="Upload a photo to start"/></div>
+<!-- Backdrop photo -->
+<div id="bgWrap"><img id="bg" alt="Upload or take a photo to start"/></div>
 
-<div id="hud">
-  <label for="photo" style="opacity:.85">Photo</label>
-  <input id="photo" type="file" accept="image/*" capture="environment"/>
+<!-- Hidden inputs: separate for gallery vs camera -->
+<input id="pickGallery" type="file" accept="image/*" hidden>
+<input id="pickCamera"  type="file" accept="image/*" capture="environment" hidden>
 
-  <label style="margin-left:6px;opacity:.85">Category</label>
-  <select id="catSel"><option>Loading…</option></select>
-
-  <label style="opacity:.85">Model</label>
-  <select id="modelSel"><option>—</option></select>
-
-  <button id="btnAdd" class="primary">+ Add</button>
-  <button id="btnUndo" class="ghost">↺ Undo</button>
-  <button id="btnClear" class="ghost">🗑 Clear</button>
-
-  <div id="right">
+<!-- Controls (bottom) -->
+<div id="panel">
+  <!-- Row 1: photo + quick actions -->
+  <div class="row scroller">
+    <button id="btnGallery" class="ghost">🖼️ Choose from Gallery</button>
+    <button id="btnCamera"  class="ghost">📷 Take Photo</button>
+    <div style="flex:1"></div>
     <button id="btnSave" class="ghost">💾 Save PNG</button>
-    <button id="btnUi"   class="ghost">👁 Hide UI</button>
+    <button id="btnUi"   class="ghost icon" title="Hide/Show UI">👁</button>
+  </div>
+
+  <!-- Row 2: model selection -->
+  <div class="row scroller">
+    <label style="opacity:.85">Category</label>
+    <select id="catSel"><option>Loading…</option></select>
+
+    <label style="opacity:.85">Model</label>
+    <select id="modelSel"><option>—</option></select>
+
+    <button id="btnAdd"   class="primary">+ Add</button>
+    <button id="btnUndo"  class="ghost">↺ Undo</button>
+    <button id="btnClear" class="ghost">🗑 Clear</button>
   </div>
 </div>
 
@@ -69,24 +108,35 @@ import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const $ = id => document.getElementById(id);
-const photo   = $('photo');
-const bgImg   = $('bg');
-const hud     = $('hud');
-const toastEl = $('toast');
-const hintEl  = $('hint');
-const catSel  = $('catSel');
-const modelSel= $('modelSel');
-const btnAdd  = $('btnAdd');
-const btnUndo = $('btnUndo');
-const btnClear= $('btnClear');
-const btnSave = $('btnSave');
-const btnUi   = $('btnUi');
 
-function toast(msg, ms=1800){ toastEl.textContent=msg; toastEl.style.display='block'; clearTimeout(toastEl._t); toastEl._t=setTimeout(()=>toastEl.style.display='none', ms); }
+/* UI refs */
+const bgImg       = $('bg');
+const panel       = $('panel');
+const toastEl     = $('toast');
+const hintEl      = $('hint');
+const catSel      = $('catSel');
+const modelSel    = $('modelSel');
+const btnAdd      = $('btnAdd');
+const btnUndo     = $('btnUndo');
+const btnClear    = $('btnClear');
+const btnSave     = $('btnSave');
+const btnUi       = $('btnUi');
+const btnGallery  = $('btnGallery');
+const btnCamera   = $('btnCamera');
+const pickGallery = $('pickGallery');
+const pickCamera  = $('pickCamera');
+
+/* Toast + hint helpers */
+function toast(msg, ms=1700){
+  toastEl.textContent = msg;
+  toastEl.style.display = 'block';
+  clearTimeout(toastEl._t);
+  toastEl._t = setTimeout(()=> toastEl.style.display='none', ms);
+}
 function showHint(on){ hintEl.style.display = on ? 'block' : 'none'; }
 
-// --------- Three scene ----------
-const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+/* Three basics */
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
@@ -95,38 +145,35 @@ const scene  = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.01, 100);
 camera.position.set(0, 1.6, 3);
 
-// Lighting & soft ground
 scene.add(new THREE.HemisphereLight(0xffffff,0x444466,0.9));
 const dir = new THREE.DirectionalLight(0xffffff,1.1); dir.position.set(2,4,2); dir.castShadow=true; scene.add(dir);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.ShadowMaterial({opacity:0.3}));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.ShadowMaterial({opacity:0.28}));
 ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
 
-// Loaders (LOCAL DRACO path!)
+/* Loaders (LOCAL) */
 const draco = new DRACOLoader();
 draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
 const gltf = new GLTFLoader(); gltf.setDRACOLoader(draco);
 
-// Catalog with categories
+/* Catalog */
 const CATALOG_URL = './models/models.json';
-let catalog = [];          // flat list
-let byCat   = new Map();   // category -> array
-const cache = new Map();   // url -> THREE.Group
-const placed= [];          // stack of added objects
-let active  = null;        // last selected
+let catalog = [];
+let byCat = new Map();
+const cache = new Map();
+const placed = [];
+let active = null;
 
-async function loadCatalog() {
+async function loadCatalog(){
   try{
     const r = await fetch(CATALOG_URL, { cache:'no-store' });
     const data = await r.json();
-    catalog = Array.isArray(data) ? data : (data.models || []);
-    // bucket by category (fallback "General")
+    catalog = Array.isArray(data) ? data : (data.models||[]);
     byCat.clear();
     for (const it of catalog){
-      const cat = (it.category || 'General').trim();
+      const cat = (it.category||'General').trim();
       if (!byCat.has(cat)) byCat.set(cat, []);
       byCat.get(cat).push(it);
     }
-    // populate category select
     catSel.innerHTML = '';
     [...byCat.keys()].sort().forEach(c=>{
       const o=document.createElement('option'); o.value=c; o.textContent=c; catSel.appendChild(o);
@@ -134,8 +181,7 @@ async function loadCatalog() {
     rebuildModelList();
     toast(`Catalog ready (${catalog.length})`);
   }catch(e){
-    catSel.innerHTML = '<option>Failed</option>';
-    modelSel.innerHTML = '<option>—</option>';
+    catSel.innerHTML='<option>Failed</option>'; modelSel.innerHTML='<option>—</option>';
     toast('Failed to load models.json');
   }
 }
@@ -147,7 +193,22 @@ function rebuildModelList(){
 catSel.addEventListener('change', rebuildModelList);
 await loadCatalog();
 
-// Preload + clone helpers
+/* Photo load (gallery & camera) */
+function wirePicker(input){
+  input.addEventListener('change', ()=>{
+    const f = input.files?.[0]; if(!f) return;
+    const url = URL.createObjectURL(f);
+    bgImg.src = url;
+    bgImg.onload = ()=> URL.revokeObjectURL(url);
+  });
+}
+wirePicker(pickGallery);
+wirePicker(pickCamera);
+
+btnGallery.onclick = ()=> pickGallery.click();
+btnCamera.onclick  = ()=> pickCamera.click();
+
+/* Model helpers */
 async function ensureLoaded(item){
   if (cache.has(item.url)) return cache.get(item.url);
   const gl = await gltf.loadAsync(item.url);
@@ -164,21 +225,13 @@ function cloneFrom(item){
   return obj;
 }
 
-// ---------- Background photo ----------
-photo.addEventListener('change', ()=>{
-  const f = photo.files?.[0]; if(!f) return;
-  const url = URL.createObjectURL(f);
-  bgImg.src = url;
-  bgImg.onload = ()=> URL.revokeObjectURL(url);
-});
-
-// ---------- Placement gestures ----------
-let touch = {mode:'idle', p1:null, p2:null, startScale:1, startRotY:0};
+/* Placement gestures */
+let touch = { mode:'idle', startScale:1, startRotY:0, startDist:0, startAng:0 };
 
 function screenToGround(x,y){
   const ndc = new THREE.Vector2((x/innerWidth)*2-1, -(y/innerHeight)*2+1);
   const ray = new THREE.Raycaster(); ray.setFromCamera(ndc,camera);
-  const hit = ray.intersectObject(ground, false)[0];
+  const hit = ray.intersectObject(ground,false)[0];
   return hit?.point || null;
 }
 
@@ -186,16 +239,13 @@ renderer.domElement.addEventListener('touchstart', (e)=>{
   if (!active) return;
   if (e.touches.length===1){
     touch.mode='drag';
-    touch.p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
-    touch.anchor = screenToGround(touch.p1.x, touch.p1.y) || active.position.clone();
-  } else if (e.touches.length===2){
+  }else if (e.touches.length===2){
     touch.mode='transform';
-    touch.p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
-    touch.p2 = {x:e.touches[1].clientX, y:e.touches[1].clientY};
-    touch.startD = Math.hypot(touch.p2.x-touch.p1.x, touch.p2.y-touch.p1.y);
-    touch.startA = Math.atan2(touch.p2.y-touch.p1.y, touch.p2.x-touch.p1.x);
-    touch.startScale = active.scale.x;
-    touch.startRotY  = active.rotation.y;
+    const [t1,t2] = e.touches;
+    touch.startDist = Math.hypot(t2.clientX-t1.clientX, t2.clientY-t1.clientY);
+    touch.startAng  = Math.atan2(t2.clientY-t1.clientY, t2.clientX-t1.clientX);
+    touch.startScale= active.scale.x;
+    touch.startRotY = active.rotation.y;
   }
 },{passive:true});
 
@@ -203,29 +253,24 @@ renderer.domElement.addEventListener('touchmove', (e)=>{
   if (!active) return;
   if (touch.mode==='drag' && e.touches.length===1){
     const pt = screenToGround(e.touches[0].clientX, e.touches[0].clientY);
-    if (pt){ active.position.lerp(pt, 0.3); }
+    if (pt) active.position.lerp(pt, 0.28);
   } else if (touch.mode==='transform' && e.touches.length===2){
-    const p1 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
-    const p2 = {x:e.touches[1].clientX, y:e.touches[1].clientY};
-    const d  = Math.hypot(p2.x-p1.x, p2.y-p1.y);
-    const a  = Math.atan2(p2.y-p1.y, p2.x-p1.x);
+    const [p1,p2]=e.touches;
+    const d  = Math.hypot(p2.clientX-p1.clientX, p2.clientY-p1.clientY);
+    const ang= Math.atan2(p2.clientY-p1.clientY, p2.clientX-p1.clientX);
     // scale
-    let s = touch.startScale * (d / touch.startD);
+    let s = touch.startScale * (d / touch.startDist);
     s = Math.min(Math.max(s, 0.05), 20);
     active.scale.setScalar(s);
     // rotate
-    active.rotation.y = touch.startRotY + (a - touch.startA);
+    active.rotation.y = touch.startRotY + (ang - touch.startAng);
   }
 },{passive:true});
 
 renderer.domElement.addEventListener('touchend', ()=>{ touch.mode='idle'; },{passive:true});
+renderer.domElement.addEventListener('click', ()=>{ if (placed.length){ active = placed[placed.length-1]; showHint(true); }});
 
-// tap to make last placed active
-renderer.domElement.addEventListener('click', ()=>{
-  if (placed.length){ active = placed[placed.length-1]; showHint(true); }
-});
-
-// ---------- Buttons ----------
+/* Buttons */
 btnAdd.onclick = async ()=>{
   const list = byCat.get(catSel.value) || [];
   const item = list[ Number(modelSel.value) ];
@@ -240,53 +285,37 @@ btnAdd.onclick = async ()=>{
     active = o;
     showHint(true);
     toast('Model added');
-  }catch(e){
-    console.error(e);
-    toast('Model load failed');
-  }
+  }catch(e){ console.error(e); toast('Model load failed'); }
 };
 
-btnUndo.onclick = ()=>{
-  const o = placed.pop();
-  if (o){ scene.remove(o); if (o===active) active=null; toast('Undone'); }
-};
-
-btnClear.onclick = ()=>{
-  while(placed.length){ scene.remove(placed.pop()); }
-  active=null; toast('Cleared');
-};
+btnUndo.onclick = ()=>{ const o=placed.pop(); if(o){ scene.remove(o); if(o===active) active=null; toast('Undone'); } };
+btnClear.onclick = ()=>{ while(placed.length){ scene.remove(placed.pop()); } active=null; toast('Cleared'); };
 
 btnUi.onclick = ()=>{
-  const hidden = hud.style.display==='none';
-  hud.style.display = hidden ? 'flex' : 'none';
-  btnUi.textContent = hidden ? '👁 Hide UI' : '👁 Show UI';
+  const off = panel.style.display==='none';
+  panel.style.display = off ? 'flex' : 'none';
+  btnUi.textContent = off ? '👁' : '👁';
 };
 
 btnSave.onclick = ()=>{
-  // Composite BG photo + WebGL canvas into one PNG
-  const w = bgImg.naturalWidth || innerWidth;
-  const h = bgImg.naturalHeight || innerHeight;
+  // Compose background + GL overlay into one PNG
+  const w = bgImg.naturalWidth || innerWidth, h = bgImg.naturalHeight || innerHeight;
   const out = document.createElement('canvas'); out.width=w; out.height=h;
   const ctx = out.getContext('2d');
-  // draw bg (fit contain)
-  const ratio = Math.min(w/(bgImg.width||w), h/(bgImg.height||h)); // fallback
-  // Easier: draw natural image to full canvas
   if (bgImg.src) ctx.drawImage(bgImg, 0, 0, w, h);
-  // draw 3D canvas scaled to the same size
   const glURL = renderer.domElement.toDataURL('image/png');
   const im = new Image(); im.onload = ()=>{
     ctx.drawImage(im, 0, 0, w, h);
     const a=document.createElement('a'); a.href=out.toDataURL('image/png'); a.download=`staged-${Date.now()}.png`; a.click();
-  };
-  im.src = glURL;
+  }; im.src = glURL;
 };
 
-// ---------- Render loop & resize ----------
+/* Render + resize */
 function tick(){ renderer.render(scene,camera); requestAnimationFrame(tick); }
 tick();
 
 addEventListener('resize', ()=>{
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
 });
 </script>
