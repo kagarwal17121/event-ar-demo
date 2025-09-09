@@ -30,6 +30,26 @@
     "shadow": true
   },
   {
+    "name": "Floral Stage 1",
+    "category": "Stages",
+    "url": "./models/Floral_Stage_1.glb",
+    "thumbnail": "./models/thumbs/Floral_Stage_1.jpg",
+    "scale": 1,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Mandap 1",
+    "category": "Mandaps",
+    "url": "./models/Mandap_1.glb",
+    "thumbnail": "./models/thumbs/Mandap_1.jpg",
+    "scale": 1,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
     "name": "Marigold Haldi Stage",
     "category": "Stages",
     "url": "./models/Marigold_Haldi_Stage.glb",
@@ -40,10 +60,10 @@
     "shadow": true
   },
   {
-    "name": "Floral Stage 1",
-    "category": "Stages",
-    "url": "./models/Floral_Stage_1.glb",
-    "thumbnail": "./models/thumbs/Floral_Stage_1.jpg",
+    "name": "Sofa",
+    "category": "Furniture",
+    "url": "./models/Sofa.glb",
+    "thumbnail": "./models/thumbs/Sofa.jpg",
     "scale": 1,
     "rotation": [0, 0, 0],
     "position": [0, 0, 0],
@@ -70,20 +90,40 @@
     "shadow": true
   },
   {
-    "name": "Base Basic PBR",
+    "name": "Base Basic Shaded",
     "category": "Base",
-    "url": "./models/base_basic_pbr.glb",
-    "thumbnail": "./models/thumbs/base_basic_pbr.jpg",
+    "url": "./models/base_basic_shaded.glb",
+    "thumbnail": "./models/thumbs/base_basic_shaded.jpg",
     "scale": 1,
     "rotation": [0, 0, 0],
     "position": [0, 0, 0],
     "shadow": true
   },
   {
-    "name": "Mandap 1",
-    "category": "Mandaps",
-    "url": "./models/Mandap_1.glb",
-    "thumbnail": "./models/thumbs/Mandap_1.jpg",
+    "name": "Concert Stage",
+    "category": "Stages",
+    "url": "./models/concert-stage.glb",
+    "thumbnail": "./models/thumbs/concert-stage.jpg",
+    "scale": 1,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Decor",
+    "category": "Decor",
+    "url": "./models/decor.glb",
+    "thumbnail": "./models/thumbs/decor.jpg",
+    "scale": 1,
+    "rotation": [0, 0, 0],
+    "position": [0, 0, 0],
+    "shadow": true
+  },
+  {
+    "name": "Podium",
+    "category": "Furniture",
+    "url": "./models/podium.glb",
+    "thumbnail": "./models/thumbs/podium.jpg",
     "scale": 1,
     "rotation": [0, 0, 0],
     "position": [0, 0, 0],
