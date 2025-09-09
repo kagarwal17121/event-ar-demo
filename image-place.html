@@ -1,40 +1,31 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Place 3D on Image</title>
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Place Models on Photo</title>
 <style>
-  :root { color-scheme: dark; }
-  html,body { margin:0; height:100%; background:#0b0b0f; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
-  #app { display:flex; flex-direction:column; height:100%; }
-
-  /* Status bar */
-  #statusBar { background:#10131a; padding:8px 12px; font-size:14px; color:#9fb1ff; border-bottom:1px solid #1c202a; }
-
-  /* Controls */
-  #controls { background:#141821; padding:10px; display:flex; flex-direction:column; gap:10px; }
-  #controls label { font-size:14px; color:#9fb1ff; }
-  #controls select, #controls input[type=file], #controls button, #controls input[type=range] {
-    width:100%; height:44px; font-size:15px; border-radius:8px; border:none;
-  }
-  #controls select, #controls input[type=file] { background:#1d2230; color:#fff; }
-  #controls button { background:#2563ff; color:#fff; font-weight:600; }
-  #controls button.secondary { background:#2a2f3b; color:#fff; }
-  #controls .row { display:flex; gap:8px; }
-  #controls .row button { flex:1; }
-
-  /* Stage */
-  #stage { flex:1; position:relative; background:#000; display:flex; align-items:center; justify-content:center; }
-  #bg { max-width:100%; max-height:100%; object-fit:contain; display:none; }
-  #threeCanvas { position:absolute; top:0; left:0; width:100%; height:100%; touch-action:none; }
-
-  /* Bottom bar */
-  #bottomBar { padding:10px; background:#10131a; border-top:1px solid #1c202a; }
-  #btnSave { width:100%; height:50px; border-radius:10px; font-size:16px; font-weight:600; background:#2563ff; color:#fff; border:none; }
+  :root{color-scheme:dark}
+  html,body{height:100%;margin:0;background:#0b0b0f;color:#eaeaf1;
+    font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  /* Top HUD */
+  #hud{position:fixed;inset:0 0 auto 0;display:flex;gap:8px;flex-wrap:wrap;
+       padding:10px 12px;background:rgba(10,10,12,.88);backdrop-filter:saturate(1.3) blur(6px);z-index:5}
+  select,button,input[type="file"]{height:44px;border-radius:12px;border:1px solid #2a2e36;background:#14161b;color:#fff;padding:0 12px}
+  select{min-width:160px}
+  button.primary{background:#2b6cff;border-color:#2b6cff}
+  button.ghost{background:#191b22}
+  button:disabled{opacity:.45}
+  #right{margin-left:auto;display:flex;gap:8px}
+  #toggleUI{position:fixed;right:12px;bottom:18px;height:52px;border-radius:26px;padding:0 16px;z-index:6}
+  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:rgba(0,0,0,.55);
+        padding:8px 12px;border-radius:12px;font-size:13px;z-index:4;display:none}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none}
+  /* Small help pill */
+  #help{position:fixed;left:12px;bottom:18px;font-size:12px;opacity:.8}
 </style>
 
+<!-- Local import map -->
 <script type="importmap">
 {
   "imports": {
@@ -45,157 +36,326 @@
 </script>
 </head>
 <body>
-<div id="app">
 
-  <!-- Status -->
-  <div id="statusBar">boot…</div>
+<div id="hud">
+  <label for="file" style="opacity:.85;align-self:center">Photo</label>
+  <input id="file" type="file" accept="image/*" />
 
-  <!-- Controls -->
-  <div id="controls">
-    <div>
-      <label>Step 1: Pick Image</label>
-      <input id="bgFile" type="file" accept="image/*">
-    </div>
+  <select id="catSel"><option>All categories</option></select>
+  <select id="modelSel"><option>Loading models…</option></select>
 
-    <div>
-      <label>Step 2: Pick Model</label>
-      <select id="modelSelect" disabled><option>Loading…</option></select>
-      <button id="btnAdd" disabled>➕ Add Model</button>
-    </div>
+  <button id="btnPlace" class="primary">Tap to place</button>
+  <button id="btnUndo"  class="ghost">↶ Undo</button>
+  <button id="btnClear" class="ghost">🗑 Clear</button>
 
-    <div class="row">
-      <button id="btnDelete" class="secondary" disabled>🗑 Delete</button>
-      <button id="btnClear" class="secondary" disabled>♻ Clear All</button>
-    </div>
-
-    <div>
-      <label>Scale</label>
-      <input id="scale" type="range" min="0.05" max="5" step="0.01" value="1">
-    </div>
-
-    <div class="row">
-      <button id="btnRotL" class="secondary">⟲ Rotate</button>
-      <button id="btnRotR" class="secondary">⟳ Rotate</button>
-    </div>
+  <div id="right">
+    <button id="btnSnap" class="ghost">💾 Save</button>
   </div>
-
-  <!-- Stage -->
-  <div id="stage">
-    <img id="bg" alt="background">
-    <canvas id="threeCanvas"></canvas>
-  </div>
-
-  <!-- Bottom -->
-  <div id="bottomBar">
-    <button id="btnSave">⬇ Download PNG</button>
-  </div>
-
 </div>
+
+<div id="hint">Tap on the photo to place the model. Drag=move · Pinch=scale · Twist=rotate</div>
+<button id="toggleUI" class="ghost">👁 Hide UI</button>
+<div id="help">Tip: two-finger rotate to change floor angle</div>
+
+<canvas id="c"></canvas>
 
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }     from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader }    from 'three/addons/loaders/DRACOLoader.js';
 
-const ui = {
-  status: document.getElementById('statusBar'),
-  bgFile: document.getElementById('bgFile'),
-  bg: document.getElementById('bg'),
-  modelSel: document.getElementById('modelSelect'),
-  add: document.getElementById('btnAdd'),
-  del: document.getElementById('btnDelete'),
-  clear: document.getElementById('btnClear'),
-  save: document.getElementById('btnSave'),
-  scale: document.getElementById('scale'),
-  rotL: document.getElementById('btnRotL'),
-  rotR: document.getElementById('btnRotR'),
-  canvas: document.getElementById('threeCanvas')
-};
-function setStatus(t){ ui.status.textContent=t; }
+const cvs = document.getElementById('c');
+const file = document.getElementById('file');
+const catSel = document.getElementById('catSel');
+const modelSel = document.getElementById('modelSel');
+const btnPlace = document.getElementById('btnPlace');
+const btnUndo = document.getElementById('btnUndo');
+const btnClear = document.getElementById('btnClear');
+const btnSnap = document.getElementById('btnSnap');
+const toggleUI = document.getElementById('toggleUI');
+const hud = document.getElementById('hud');
+const hint = document.getElementById('hint');
 
-let renderer, scene, camera, raycaster, plane, pointer=new THREE.Vector2();
-let catalog=[], placed=[], selected=null;
+let placing = false;        // if true, next tap places selected model
+let dragging = false;       // dragging a placed model
+let active = null;          // currently selected object
+let startDist = 0, startScale = 1, startRot = 0, startAngle = 0;
 
-renderer=new THREE.WebGLRenderer({canvas:ui.canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
-renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-scene=new THREE.Scene();
-camera=new THREE.OrthographicCamera(-400,400,300,-300,0.1,1000);
-camera.position.set(0,0,10);
-scene.add(new THREE.AmbientLight(0xffffff,1));
+const renderer = new THREE.WebGLRenderer({canvas: cvs, antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-plane=new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({transparent:true,opacity:0}));
-scene.add(plane);
-raycaster=new THREE.Raycaster();
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 200);
+camera.position.set(0, 2.2, 5);
 
-function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera);} animate();
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = true;
+controls.target.set(0,0,0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(3,5,2); dir.castShadow = true; scene.add(dir);
+
+// Background photo (as plane so we can keep perspective stable)
+const photoGroup = new THREE.Group(); scene.add(photoGroup);
+const photoMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(16, 9),
+  new THREE.MeshBasicMaterial({color:0x222, side:THREE.DoubleSide})
+);
+photoGroup.add(photoMesh);
+photoGroup.position.z = -0.01; // just behind the 3D floor
+
+// Ground (the “floor” where we raycast to place)
+const ground = new THREE.GridHelper(20, 20, 0x4da3ff, 0x2a2e36);
+ground.position.y = 0;
+scene.add(ground);
+const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0); // y=0
+
+// Loaders
+const draco = new DRACOLoader();
+draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf = new GLTFLoader(); gltf.setDRACOLoader(draco);
 
 // Catalog
-const draco=new DRACOLoader().setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-const gltf=new GLTFLoader().setDRACOLoader(draco);
+let fullCatalog = [];       // all items
+let catalog = [];           // filtered by category
+const cache = new Map();    // url -> THREE.Group (source)
+const placed = [];          // stack of placed objects (for Undo)
+
 async function loadCatalog(){
   try{
-    const res=await fetch('./models/models.json',{cache:'no-cache'});
-    catalog=await res.json();
-    ui.modelSel.innerHTML='';
-    catalog.forEach((m,i)=>{const o=document.createElement('option');o.value=i;o.textContent=m.name;ui.modelSel.appendChild(o);});
-    ui.modelSel.disabled=false; ui.add.disabled=false;
-    setStatus('✅ Catalog loaded');
-  }catch{ setStatus('⚠ Failed to load catalog'); }
+    const r = await fetch('./models/models.json', {cache:'no-store'});
+    const j = await r.json();
+    fullCatalog = Array.isArray(j) ? j : (j.models || []);
+    buildCategoryOptions(fullCatalog);
+    applyCategoryFilter();
+  }catch(e){
+    modelSel.innerHTML = '<option>Failed to load catalog</option>';
+  }
 }
-loadCatalog();
 
-// Background
-ui.bgFile.onchange=e=>{
-  const file=e.target.files[0]; if(!file)return;
-  const url=URL.createObjectURL(file);
-  ui.bg.src=url; ui.bg.style.display='block';
-  ui.bg.onload=()=>{
-    const w=ui.bg.naturalWidth,h=ui.bg.naturalHeight;
-    renderer.setSize(ui.stageW=w,ui.stageH=h);
-    camera.left=-w/2;camera.right=w/2;camera.top=h/2;camera.bottom=-h/2;camera.updateProjectionMatrix();
-    plane.scale.set(w,h,1);
-    setStatus('✅ Image loaded. Step 2: Add model.');
-  };
-};
+function buildCategoryOptions(list){
+  const cats = ['All'];
+  for (const it of list){
+    if (it.category && !cats.includes(it.category)) cats.push(it.category);
+  }
+  catSel.innerHTML = '';
+  for (const c of cats){
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = (c==='All'?'All categories':c);
+    catSel.appendChild(opt);
+  }
+}
 
-// Add model
-ui.add.onclick=async()=>{
-  const item=catalog[ui.modelSel.value]; if(!item)return;
-  setStatus('Loading '+item.name+'…');
-  const glb=await gltf.loadAsync(item.url); const obj=glb.scene;
-  obj.scale.setScalar(item.scale||1); obj.position.set(0,0,0);
-  scene.add(obj); placed.push(obj); select(obj);
-  setStatus('Tap & drag to move • pinch/slider to scale');
-};
+function applyCategoryFilter(){
+  const sel = catSel.value || 'All';
+  catalog = (sel==='All')
+    ? fullCatalog
+    : fullCatalog.filter(it=> (it.category||'').toLowerCase() === sel.toLowerCase());
+  modelSel.innerHTML = '';
+  for (const it of catalog){
+    const o = document.createElement('option');
+    o.value = it.url; o.textContent = it.name || it.url;
+    modelSel.appendChild(o);
+  }
+}
 
-// Selection
-function select(o){ selected=o; if(o){ui.del.disabled=false;} else {ui.del.disabled=true;} }
-renderer.domElement.addEventListener('pointerdown',e=>{
-  setPointer(e);const hit=pick(pointer); if(hit){select(hit.object.parent);} else select(null);
+catSel.addEventListener('change', applyCategoryFilter);
+await loadCatalog();
+
+// Image upload -> set as photo plane texture, fit view
+file.addEventListener('change', async (e)=>{
+  const f = e.target.files?.[0]; if (!f) return;
+  const url = URL.createObjectURL(f);
+  const tx = await new THREE.TextureLoader().loadAsync(url);
+  tx.colorSpace = THREE.SRGBColorSpace; tx.needsUpdate = true;
+  photoMesh.material.map = tx; photoMesh.material.needsUpdate = true;
+
+  // Compute plane aspect to match image
+  const img = new Image(); img.src = url; await img.decode();
+  const aspect = img.width / img.height;
+  const height = 9; // keep our base height
+  const width = height * aspect;
+  photoMesh.geometry.dispose();
+  photoMesh.geometry = new THREE.PlaneGeometry(width, height);
+
+  // Center the view nicely
+  camera.position.set(0, 2.2, 5);
+  controls.target.set(0,0,0);
+  controls.update();
+  hint.style.display = 'block';
+  setTimeout(()=>{ hint.style.display='none'; }, 4500);
 });
-renderer.domElement.addEventListener('pointermove',e=>{
-  if(!selected||e.buttons!==1)return; setPointer(e); const p=planeHit(pointer); if(p)selected.position.copy(p);
-});
-function setPointer(e){const r=ui.canvas.getBoundingClientRect(); pointer.x=((e.clientX-r.left)/r.width)*2-1; pointer.y=-((e.clientY-r.top)/r.height)*2+1;}
-function planeHit(ndc){raycaster.setFromCamera(ndc,camera);const h=raycaster.intersectObject(plane)[0];return h?h.point:null;}
-function pick(ndc){raycaster.setFromCamera(ndc,camera);const h=raycaster.intersectObjects(placed,true);return h?.[0]||null;}
 
-// Scale + rotate
-ui.scale.oninput=()=>{ if(selected){const s=Number(ui.scale.value); selected.scale.setScalar(s);} };
-ui.rotL.onclick=()=>{ if(selected)selected.rotation.y+=THREE.MathUtils.degToRad(-15); };
-ui.rotR.onclick=()=>{ if(selected)selected.rotation.y+=THREE.MathUtils.degToRad(15); };
+// ---------- Placement helpers ----------
+async function ensureLoaded(url){
+  if (cache.has(url)) return cache.get(url);
+  const { scene:root } = await gltf.loadAsync(url);
+  cache.set(url, root);
+  return root;
+}
+function cloneFrom(url, item){
+  const src = cache.get(url);
+  const obj = src.clone(true);
+  const s = item.scale ?? 1; obj.scale.setScalar(s);
+  if (item.rotation) obj.rotation.set(...item.rotation);
+  if (item.position) obj.position.set(...item.position);
+  obj.traverse(n=>{ if(n.isMesh){ n.castShadow=true; n.receiveShadow=true; }});
+  return obj;
+}
 
-// Delete/Clear
-ui.del.onclick=()=>{ if(selected){scene.remove(selected); placed=placed.filter(p=>p!==selected); select(null);} };
-ui.clear.onclick=()=>{ placed.forEach(o=>scene.remove(o)); placed=[]; select(null); };
+// Raycast from screen -> plane Y=0
+const raycaster = new THREE.Raycaster();
+const pt = new THREE.Vector2();
 
-// Save
-ui.save.onclick=()=>{
-  const cvs=document.createElement('canvas');cvs.width=renderer.domElement.width;cvs.height=renderer.domElement.height;
-  const ctx=cvs.getContext('2d');ctx.drawImage(ui.bg,0,0,cvs.width,cvs.height);ctx.drawImage(renderer.domElement,0,0);
-  const a=document.createElement('a');a.href=cvs.toDataURL('image/png');a.download='composite.png';a.click();
+function screenToPlane(x,y){
+  pt.x =  (x / renderer.domElement.clientWidth)  * 2 - 1;
+  pt.y = -(y / renderer.domElement.clientHeight) * 2 + 1;
+  raycaster.setFromCamera(pt, camera);
+  const hit = new THREE.Vector3();
+  const ok = raycaster.ray.intersectPlane(groundPlane, hit);
+  return ok ? hit : null;
+}
+
+// UI actions
+btnPlace.onclick = ()=>{ placing = true; hint.style.display='block'; };
+btnUndo.onclick = ()=>{
+  const o = placed.pop();
+  if (o){ scene.remove(o); if (active===o) active=null; }
 };
+btnClear.onclick = ()=>{
+  while(placed.length){ const o=placed.pop(); scene.remove(o); }
+  active=null;
+};
+btnSnap.onclick = ()=>{
+  // Save current canvas as PNG (works in this non-WebXR page)
+  const a=document.createElement('a');
+  a.href = renderer.domElement.toDataURL('image/png');
+  a.download = `image-demo-${Date.now()}.png`;
+  a.click();
+};
+toggleUI.onclick = ()=>{
+  if (hud.style.display !== 'none'){
+    hud.style.display = 'none'; toggleUI.textContent = '👁 Show UI';
+  } else {
+    hud.style.display = ''; toggleUI.textContent = '👁 Hide UI';
+  }
+};
+
+// Pointer + touch (drag / place / scale / rotate)
+const dragState = { id: -1, offset: new THREE.Vector3() };
+
+function pickPlaced(x,y){
+  // quick pick: last placed that’s nearest the ray; simple and fast
+  if (!placed.length) return null;
+  pt.x =  (x / renderer.domElement.clientWidth)  * 2 - 1;
+  pt.y = -(y / renderer.domElement.clientHeight) * 2 + 1;
+  raycaster.setFromCamera(pt, camera);
+  let best=null, bestD=Infinity;
+  for (const obj of placed){
+    const pos = new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld);
+    const d = raycaster.ray.distanceToPoint(pos);
+    if (d < bestD){ bestD = d; best = obj; }
+  }
+  return (bestD < 0.6) ? best : null; // threshold
+}
+
+renderer.domElement.addEventListener('pointerdown', (e)=>{
+  renderer.domElement.setPointerCapture(e.pointerId);
+
+  // two-finger start: remember spacing/angle for scale/rotate
+  if (e.pointerType === 'touch' && e.isPrimary === false){
+    // handled by touch listeners (we need two touches)
+    return;
+  }
+
+  const hit = screenToPlane(e.clientX, e.clientY);
+  if (!hit) return;
+
+  if (placing){
+    const item = catalog[modelSel.selectedIndex];
+    if (!item) return;
+    ensureLoaded(item.url).then(()=>{
+      const obj = cloneFrom(item.url, item);
+      obj.position.copy(hit);
+      scene.add(obj); placed.push(obj); active=obj;
+      placing = false; hint.style.display='none';
+    });
+  } else {
+    const pick = pickPlaced(e.clientX, e.clientY);
+    if (pick){
+      active = pick;
+      dragState.id = e.pointerId;
+      dragState.offset.copy(active.position).sub(hit);
+      dragging = true;
+    } else {
+      active = null;
+    }
+  }
+});
+
+renderer.domElement.addEventListener('pointermove', (e)=>{
+  if (!dragging || dragState.id !== e.pointerId || !active) return;
+  const hit = screenToPlane(e.clientX, e.clientY); if (!hit) return;
+  active.position.copy(hit).add(dragState.offset);
+});
+
+renderer.domElement.addEventListener('pointerup', (e)=>{
+  if (dragState.id === e.pointerId){ dragging=false; dragState.id=-1; }
+});
+
+renderer.domElement.addEventListener('touchstart', (e)=>{
+  if (!active) return;
+
+  if (e.touches.length === 2){
+    // pinch + twist
+    startDist  = dist2(e.touches);
+    startAngle = angle2(e.touches);
+    startScale = active.scale.x;
+    startRot   = active.rotation.y;
+  }
+},{passive:true});
+
+renderer.domElement.addEventListener('touchmove', (e)=>{
+  if (!active) return;
+  if (e.touches.length === 2){
+    const d = dist2(e.touches);
+    const a = angle2(e.touches);
+    // scale
+    const s = THREE.MathUtils.clamp(startScale * (d / startDist), 0.05, 10);
+    active.scale.setScalar(s);
+    // rotate around Y by twist delta
+    active.rotation.y = startRot + (a - startAngle);
+  }
+},{passive:true});
+
+function dist2(t){
+  const dx = t[0].clientX - t[1].clientX;
+  const dy = t[0].clientY - t[1].clientY;
+  return Math.hypot(dx,dy);
+}
+function angle2(t){
+  return Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
+}
+
+// Render loop
+function loop(){
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+
+// Resize
+addEventListener('resize', ()=>{
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
 </script>
 </body>
 </html>
