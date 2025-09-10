@@ -1,132 +1,43 @@
-[
-  {
-    "name": "Floral Arch 1",
-    "category": "Arches",
-    "url": "./models/Floral_Arch_1.glb",
-    "thumbnail": "./models/thumbs/Floral_Arch_1.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Floral Backdrop",
-    "category": "Backdrops",
-    "url": "./models/Floral_Backdrop.glb",
-    "thumbnail": "./models/thumbs/Floral_Backdrop.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Floral Hoop Arch",
-    "category": "Arches",
-    "url": "./models/Floral_Hoop_Arch.glb",
-    "thumbnail": "./models/thumbs/Floral_Hoop_Arch.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Floral Stage 1",
-    "category": "Stages",
-    "url": "./models/Floral_Stage_1.glb",
-    "thumbnail": "./models/thumbs/Floral_Stage_1.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Mandap 1",
-    "category": "Mandaps",
-    "url": "./models/Mandap_1.glb",
-    "thumbnail": "./models/thumbs/Mandap_1.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Marigold Haldi Stage",
-    "category": "Stages",
-    "url": "./models/Marigold_Haldi_Stage.glb",
-    "thumbnail": "./models/thumbs/Marigold_Haldi_Stage.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Sofa",
-    "category": "Furniture",
-    "url": "./models/Sofa.glb",
-    "thumbnail": "./models/thumbs/Sofa.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Vibrant Floral Mayra Stage",
-    "category": "Stages",
-    "url": "./models/Vibrant_Floral_Mayra_Stage.glb",
-    "thumbnail": "./models/thumbs/Vibrant_Floral_Mayra_Stage.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Yellow Lotus Stage",
-    "category": "Stages",
-    "url": "./models/Yellow_Lotus_Stage.glb",
-    "thumbnail": "./models/thumbs/Yellow_Lotus_Stage.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Base Basic Shaded",
-    "category": "Base",
-    "url": "./models/base_basic_shaded.glb",
-    "thumbnail": "./models/thumbs/base_basic_shaded.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Concert Stage",
-    "category": "Stages",
-    "url": "./models/concert-stage.glb",
-    "thumbnail": "./models/thumbs/concert-stage.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Decor",
-    "category": "Decor",
-    "url": "./models/decor.glb",
-    "thumbnail": "./models/thumbs/decor.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
-  },
-  {
-    "name": "Podium",
-    "category": "Furniture",
-    "url": "./models/podium.glb",
-    "thumbnail": "./models/thumbs/podium.jpg",
-    "scale": 1,
-    "rotation": [0, 0, 0],
-    "position": [0, 0, 0],
-    "shadow": true
+{
+  "categories": {
+    "Stage": [
+      {
+        "name": "Podium",
+        "url": "./models/podium.glb",
+        "thumbnail": "./models/thumbs/podium.jpg",
+        "scale": 1,
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "shadow": true
+      }
+    ],
+    "Furniture": [
+      {
+        "name": "Sofa",
+        "url": "./models/sofa.glb",
+        "thumbnail": "./models/thumbs/sofa.jpg",
+        "scale": 1,
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "shadow": true
+      }
+    ],
+    "Backdrop": []
   }
-]
+}
