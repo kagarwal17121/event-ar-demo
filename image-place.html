@@ -3,50 +3,65 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>The New Innings Planner — Place On Image</title>
+<title>The New Innings Planner — Image Placement</title>
 <style>
   :root { color-scheme: dark; }
-  html,body { margin:0; height:100%; background:#0b0b0f; color:#e6e6eb; font:15px system-ui,-apple-system,Segoe UI,Roboto; }
+  html,body { margin:0; background:#0b0b0f; color:#e6e6eb; font:15px system-ui,-apple-system,Segoe UI,Roboto; }
+  /* Canvas full screen behind; UI floats; page itself doesn’t need to scroll */
+  canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; touch-action:none; z-index:0; }
 
-  /* Canvas fills screen; photo rendered as scene background */
-  canvas { display:block; width:100vw; height:100vh; touch-action:none; }
-
-  /* Top HUD */
-  #hud { position:fixed; inset:0 0 auto 0; z-index:10; padding:10px; display:flex; gap:8px; align-items:center;
-         background:linear-gradient(180deg,rgba(8,10,14,.92),rgba(8,10,14,.65) 60%, rgba(8,10,14,0) 100%); }
-  select, button { height:42px; border-radius:12px; border:1px solid #2a2e36; background:#14161b; color:#fff; padding:0 12px; }
-  button.primary { background:#2563ff; border-color:#2563ff; }
-  button.ghost   { background:#191b22; }
-  button.icon    { width:42px; padding:0; display:grid; place-items:center; }
-  button:disabled { opacity:.45; }
+  /* Top bar */
+  #topbar {
+    position:fixed; inset:0 0 auto 0; z-index:10;
+    display:flex; align-items:center; gap:8px; padding:10px 12px;
+    background:linear-gradient(180deg,rgba(8,10,14,.92),rgba(8,10,14,.65) 60%, rgba(8,10,14,0) 100%);
+    -webkit-backdrop-filter:saturate(1.4) blur(6px); backdrop-filter:saturate(1.4) blur(6px);
+  }
   #brand { display:flex; align-items:center; gap:8px; font-weight:600; }
   #brand img { width:28px; height:28px; border-radius:6px; object-fit:cover; }
   #spacer { flex:1; }
 
-  /* Model toolbar */
-  #toolbar { position:fixed; left:50%; transform:translateX(-50%); bottom:88px; z-index:10; display:none; gap:8px; }
+  /* Bottom sheet (independently scrollable on mobile) */
+  #sheet {
+    position:fixed; left:0; right:0; bottom:0; z-index:10;
+    background:rgba(12,14,18,.96);
+    border-top:1px solid #2a2e36; border-radius:16px 16px 0 0;
+    padding:12px; box-shadow:0 -10px 40px rgba(0,0,0,.35);
+    max-height:46vh; overflow:auto; /* << mobile scroll fix */
+    -webkit-overflow-scrolling:touch;
+  }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .stack { display:grid; gap:8px; }
+  select, button, input[type="file"] {
+    height:42px; border-radius:12px; border:1px solid #2a2e36; background:#14161b; color:#fff; padding:0 12px;
+  }
+  input[type="file"]{ padding:8px 12px; height:auto; }
+  select { min-width:200px; flex:1 1 200px; }
+  button.primary { background:#2563ff; border-color:#2563ff; }
+  button.ghost   { background:#191b22; }
+  button.icon    { width:42px; padding:0; display:grid; place-items:center; }
+  button:disabled { opacity:.45; }
+  .chip { font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #2a2e36; background:#12141a; }
+  .on { border-color:#2f9e44; color:#b7ffbe; }
+
+  /* Edit toolbar */
+  #toolbar { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(46vh + 8px); z-index:10; display:none; gap:8px; }
   #toolbar > button { height:40px; border-radius:10px; }
 
-  /* Bottom bar */
-  #bottom { position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:10; display:flex; gap:8px; }
-  #hint { position:fixed; left:50%; transform:translateX(-50%); bottom:138px; background:rgba(0,0,0,.55);
-          padding:8px 12px; border-radius:10px; font-size:13px; display:none; z-index:10; }
-
-  /* Show-UI pill when HUD hidden */
-  #showUi { position:fixed; left:12px; top:12px; z-index:11; display:none; height:42px; border-radius:20px; padding:0 12px; }
+  /* Show pills when hidden */
+  #showUi  { position:fixed; left:12px; top:12px; z-index:11; display:none; height:42px; border-radius:20px; padding:0 12px; }
   #showCtl { position:fixed; right:12px; top:12px; z-index:11; display:none; height:42px; border-radius:20px; padding:0 12px; }
 
   /* Toast */
   #toast { position:fixed; left:50%; transform:translateX(-50%); top:12px; padding:6px 10px; border-radius:10px;
            background:rgba(0,0,0,.55); font:12px ui-monospace,Menlo,Consolas,monospace; z-index:11; display:none; }
 
-  /* Mobile */
   @media (max-width:480px){
     #brand span { display:none; }
   }
 </style>
 
-<!-- Import map -->
+<!-- Import map for local modules -->
 <script type="importmap">
 {
   "imports": {
@@ -58,25 +73,16 @@
 </head>
 <body>
 
-<!-- HUD -->
-<div id="hud">
+<canvas id="c"></canvas>
+
+<!-- Top bar -->
+<div id="topbar">
   <div id="brand">
     <img src="./brand-logo.png" alt="Logo" onerror="this.style.display='none'"/>
     <span>The New Innings Planner</span>
   </div>
 
-  <button id="btnPhoto" class="ghost">🖼️ Choose Photo</button>
-  <button id="btnCamera" class="ghost">📷 Use Camera</button>
-  <input id="filePhoto" type="file" accept="image/*" hidden>
-  <!-- camera input uses capture to open camera on mobile -->
-  <input id="fileCamera" type="file" accept="image/*" capture="environment" hidden>
-
-  <select id="catSel"><option>Loading…</option></select>
-  <select id="modelSel" disabled><option>Select category</option></select>
-
-  <button id="btnAdd" class="primary">+ Place</button>
-  <button id="btnUndo" class="ghost">↺ Undo</button>
-  <button id="btnClear" class="ghost">🗑 Clear</button>
+  <span id="queueChip" class="chip">Queue: 0</span>
 
   <div id="spacer"></div>
 
@@ -84,24 +90,50 @@
   <button id="btnHide" class="icon ghost" title="Hide UI">👁️</button>
 </div>
 
-<!-- Show buttons -->
+<!-- Show UI/Controls pills -->
 <button id="showUi"  class="ghost">👁️ Show UI</button>
 <button id="showCtl" class="ghost">🎛️ Show Controls</button>
 
-<!-- Toolbar for editing -->
+<!-- Scrollable bottom sheet -->
+<div id="sheet">
+  <div class="stack">
+    <div class="row">
+      <label for="file">Background photo</label>
+      <!-- accept both camera and gallery; no 'capture' attribute so gallery picker shows -->
+      <input id="file" type="file" accept="image/*">
+      <button id="fitW" class="ghost">Fit width</button>
+      <button id="fitH" class="ghost">Fit height</button>
+    </div>
+
+    <div class="row">
+      <label for="catSel">Category</label>
+      <select id="catSel"><option>Loading…</option></select>
+    </div>
+    <div class="row">
+      <label for="modelSel">Model</label>
+      <select id="modelSel" disabled><option>Select category</option></select>
+    </div>
+
+    <div class="row">
+      <button id="btnQueue" class="primary">+ Add to queue</button>
+      <button id="btnPlace" class="ghost">Place now</button>
+      <button id="btnUndo"  class="ghost">↺ Undo</button>
+      <button id="btnClear" class="ghost">🗑 Clear</button>
+    </div>
+
+    <div class="row" style="opacity:.8;">
+      <span>Tap photo to place queued model. Drag to move · Pinch to scale · Twist to rotate.</span>
+    </div>
+  </div>
+</div>
+
+<!-- Edit toolbar -->
 <div id="toolbar">
   <button id="rotL" class="ghost">◀ Rotate</button>
   <button id="rotR" class="ghost">Rotate ▶</button>
   <button id="sMinus" class="ghost">Scale −</button>
   <button id="sPlus"  class="ghost">Scale +</button>
   <button id="btnDone" class="primary">✅ Done</button>
-</div>
-
-<div id="hint">Tap on the photo to place the model</div>
-
-<!-- Bottom actions -->
-<div id="bottom">
-  <button id="btnExport" class="ghost">⬇️ Download PNG</button>
 </div>
 
 <div id="toast"></div>
@@ -113,44 +145,37 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const $=id=>document.getElementById(id);
 
-// UI refs
-const hud=$('hud'), showUi=$('showUi');
-const btnPhoto=$('btnPhoto'), btnCamera=$('btnCamera'), filePhoto=$('filePhoto'), fileCamera=$('fileCamera');
-const catSel=$('catSel'), modelSel=$('modelSel');
-const btnAdd=$('btnAdd'), btnUndo=$('btnUndo'), btnClear=$('btnClear');
-const btnHide=$('btnHide'), btnHideCtl=$('btnHideCtl'), showCtl=$('showCtl');
+// UI
+const fileInput=$('file'), fitW=$('fitW'), fitH=$('fitH');
+const btnQueue=$('btnQueue'), btnPlace=$('btnPlace'), btnUndo=$('btnUndo'), btnClear=$('btnClear');
+const catSel=$('catSel'), modelSel=$('modelSel'), queueChip=$('queueChip');
 const toolbar=$('toolbar'), rotL=$('rotL'), rotR=$('rotR'), sMinus=$('sMinus'), sPlus=$('sPlus'), btnDone=$('btnDone');
-const hint=$('hint'), btnExport=$('btnExport');
-const toast=$('toast');
+const btnHide=$('btnHide'), showUi=$('showUi'), btnHideCtl=$('btnHideCtl'), showCtl=$('showCtl');
+const toast=$('toast'), sheet=$('sheet'), topbar=$('topbar');
 
 const log=(m,ms=1600)=>{ toast.textContent=m; toast.style.display='block'; clearTimeout(log._t); log._t=setTimeout(()=>toast.style.display='none',ms); };
 
-// Three setup
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, preserveDrawingBuffer:true });
+// Three
+const renderer = new THREE.WebGLRenderer({ canvas:$('c'), antialias:true, alpha:true, preserveDrawingBuffer:true });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
 
-// We'll use a Perspective camera but place a big "ground" plane at z=0 for raycasting.
-// Scene background will be set to the uploaded image (texture), letterboxed automatically.
-const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
-camera.position.set(0, 1.6, 3);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 200);
+camera.position.set(0,0,3);
 
-// Lighting + soft ground shadow
-const hemi = new THREE.HemisphereLight(0xffffff,0x444466,0.9); scene.add(hemi);
-const dir  = new THREE.DirectionalLight(0xffffff,1.0); dir.position.set(2,5,2); dir.castShadow=true; scene.add(dir);
+// Lights modest (indoor look)
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dir = new THREE.DirectionalLight(0xffffff,0.9); dir.position.set(1,2,1); scene.add(dir);
 
-// Invisible ground plane used for placement (at y=0)
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshBasicMaterial({ visible:false }));
-ground.rotation.x = -Math.PI/2; // make it horizontal
-ground.position.y = 0;
-scene.add(ground);
+// Image plane (big) — we’ll set the texture when user picks one
+const planeGeo = new THREE.PlaneGeometry(10,10); // size adjusted on fit actions
+const planeMat = new THREE.MeshBasicMaterial({ color:0x111115, side:THREE.DoubleSide });
+const bgPlane  = new THREE.Mesh(planeGeo, planeMat);
+scene.add(bgPlane);
 
-// Optional shadow receiver (subtle)
-const shadow = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.ShadowMaterial({ opacity:0.35 }));
-shadow.rotation.x = -Math.PI/2; shadow.position.y = 0; shadow.receiveShadow = true;
-scene.add(shadow);
+// Raycaster for tap→plane intersection
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
 
 // Loaders
 const draco = new DRACOLoader(); draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
@@ -159,17 +184,34 @@ const gltf  = new GLTFLoader();  gltf.setDRACOLoader(draco);
 // Catalog
 const CATALOG_URL = './models/models.json?v=' + Date.now();
 let catalog = { categories:{} };
-let catOrder = [];
+let categories = [];
 
-// States
-const cache = new Map();      // url -> THREE.Object3D
-const placed = [];            // placed objects
+// Caches & state
+const cache = new Map(); // url -> THREE.Object3D
+const queue = [];        // { cat, idx }
+const placed = [];
 let selected=null, editing=false;
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
+let gesture=null;
 
-// Background
-let bgTexture = null;
+// HUD toggle
+function toggleHUD(hide){
+  topbar.style.display = hide ? 'none' : 'flex';
+  sheet.style.display  = hide ? 'none' : 'block';
+  toolbar.style.display = (hide ? 'none' : (editing ? 'flex' : 'none'));
+  showUi.style.display = hide ? 'inline-block' : 'none';
+}
+btnHide.onclick = ()=> toggleHUD(true);
+showUi.onclick  = ()=> toggleHUD(false);
+
+// Hide/show controls only
+btnHideCtl.onclick = ()=>{
+  toolbar.style.display = 'none';
+  showCtl.style.display = 'inline-block';
+};
+showCtl.onclick = ()=>{
+  showCtl.style.display = 'none';
+  if (editing) toolbar.style.display='flex';
+};
 
 // Helpers
 function enableShadows(obj,on){ obj.traverse(n=>{ if(n.isMesh){ n.castShadow=on; n.receiveShadow=on; } }); }
@@ -180,7 +222,7 @@ async function preload(cat, idx){
   cache.set(it.url, gl.scene);
   return gl.scene;
 }
-function cloneFrom(cat,idx){
+function cloneFrom(cat, idx){
   const it = catalog.categories[cat][idx];
   const src = cache.get(it.url);
   const obj = src.clone(true);
@@ -191,53 +233,12 @@ function cloneFrom(cat,idx){
   return obj;
 }
 function setEdit(on){
-  editing = on;
+  editing=on;
   toolbar.style.display = on ? 'flex' : 'none';
-  hint.style.display = (!on) ? 'block' : 'none';
 }
-function toggleHUD(hide){
-  hud.style.display = hide ? 'none' : 'flex';
-  showUi.style.display = hide ? 'inline-block' : 'none';
-}
-function toggleControls(hide){
-  toolbar.style.display = hide ? 'none' : (editing ? 'flex' : 'none');
-  showCtl.style.display = hide ? 'inline-block' : 'none';
-}
+function updateQueueChip(){ queueChip.textContent = `Queue: ${queue.length}`; }
 
-// Photo loading
-function setBackgroundFromFile(file){
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = ()=>{
-      const tex = new THREE.Texture(img);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.needsUpdate = true;
-      bgTexture = tex;
-      scene.background = tex;
-      // keep perspective; nothing special needed—Three letterboxes the background
-      log('Photo loaded');
-      hint.style.display='block';
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-
-// Map screen coords to ground plane
-function setPointerFromEvent(e){
-  const x = (e.clientX ?? e.touches?.[0]?.clientX ?? 0);
-  const y = (e.clientY ?? e.touches?.[0]?.clientY ?? 0);
-  pointer.x =  (x / innerWidth) * 2 - 1;
-  pointer.y = -(y / innerHeight) * 2 + 1;
-}
-function intersectGround(){
-  raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObject(ground, false);
-  return hits[0] || null;
-}
-
-// ---------- Catalog ----------
+// Catalog load
 (async()=>{
   try{
     const r = await fetch(CATALOG_URL, { cache:'no-store' });
@@ -245,164 +246,202 @@ function intersectGround(){
     if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
     const data = JSON.parse(txt);
     catalog = Array.isArray(data) ? { categories:{ Default:data } } : data;
-    catOrder = Object.keys(catalog.categories);
-
+    categories = Object.keys(catalog.categories);
     catSel.innerHTML = '';
-    for (const c of catOrder){
-      const opt = document.createElement('option'); opt.value=c; opt.textContent=c; catSel.appendChild(opt);
+    for (const c of categories){
+      const opt=document.createElement('option'); opt.value=c; opt.textContent=c; catSel.appendChild(opt);
     }
-    updateModelOptions();
-    log(`Catalog loaded (${catOrder.length} categories)`);
+    refreshModels();
+    log(`Catalog loaded (${categories.length} categories)`);
   }catch(e){
     catSel.innerHTML = '<option>Failed to load</option>';
     modelSel.innerHTML = '<option>—</option>';
     log('Failed to load catalog');
   }
 })();
-function updateModelOptions(){
+function refreshModels(){
   const cat = catSel.value;
   const arr = catalog.categories[cat] || [];
-  modelSel.innerHTML = '';
+  modelSel.innerHTML='';
   arr.forEach((it,i)=>{
-    const opt=document.createElement('option'); opt.value=String(i); opt.textContent=it.name||`Model ${i+1}`; modelSel.appendChild(opt);
+    const o=document.createElement('option'); o.value=String(i); o.textContent=it.name||`Model ${i+1}`; modelSel.appendChild(o);
   });
   modelSel.disabled = arr.length===0;
 }
-catSel.onchange = updateModelOptions;
+catSel.onchange = refreshModels;
 
-// ---------- UI events ----------
-btnPhoto.onclick = ()=> filePhoto.click();
-btnCamera.onclick= ()=> fileCamera.click();
-filePhoto.onchange = e=>{ const f=e.target.files?.[0]; if(f) setBackgroundFromFile(f); };
-fileCamera.onchange= e=>{ const f=e.target.files?.[0]; if(f) setBackgroundFromFile(f); };
+// Background image handling
+const texLoader = new THREE.TextureLoader();
+fileInput.addEventListener('change', ()=>{
+  const f = fileInput.files?.[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  texLoader.load(url, (texture)=>{
+    texture.colorSpace = THREE.SRGBColorSpace;
+    planeMat.map = texture; planeMat.needsUpdate = true;
+    // default fit: width
+    fitPlaneTo('width', texture.image?.naturalWidth || texture.image?.width, texture.image?.naturalHeight || texture.image?.height);
+    log('Photo loaded');
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }, undefined, ()=>{ log('Failed to load photo'); });
+});
 
-btnAdd.onclick = async ()=>{
-  const cat = catSel.value;
-  const idx = Number(modelSel.value);
-  if (!bgTexture){ log('Choose a photo first'); return; }
-  if (Number.isNaN(idx)){ log('Select a model'); return; }
+// Fit helpers
+function fitPlaneTo(mode, iw, ih){
+  if (!iw || !ih){ bgPlane.scale.set(1,1,1); return; }
+  // Keep plane at base size 10x10, we adjust scale to match aspect
+  const aspect = iw/ih;
+  // Fill vertical FOV at camera.z ~3 so that photo is nicely framed
+  const viewH = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov/2)) * camera.position.z;
+  const viewW = viewH * (innerWidth/innerHeight);
+  // base plane is 10x10 units -> scale accordingly
+  let targetW, targetH;
+  if (mode === 'width'){
+    targetW = viewW * 0.95;   // little margin
+    targetH = targetW / aspect;
+  }else{
+    targetH = viewH * 0.70;   // leave room for sheet
+    targetW = targetH * aspect;
+  }
+  bgPlane.scale.set(targetW/10, targetH/10, 1);
+}
+fitW.onclick = ()=>{ const img=planeMat.map?.image; fitPlaneTo('width', img?.naturalWidth||img?.width, img?.naturalHeight||img?.height); };
+fitH.onclick = ()=>{ const img=planeMat.map?.image; fitPlaneTo('height',img?.naturalWidth||img?.width, img?.naturalHeight||img?.height); };
 
-  try{
-    await preload(cat, idx);
-    // wait for a tap to place — next click/touch places it
-    placing = { cat, idx };
-    hint.textContent = 'Tap on the photo to place';
-    hint.style.display = 'block';
-    log('Tap to place');
-  }catch{ log('Preload failed'); }
+// UI actions
+btnQueue.onclick = async()=>{
+  const cat=catSel.value; const idx=Number(modelSel.value);
+  if (Number.isNaN(idx)) return;
+  try{ await preload(cat, idx); queue.push({cat,idx}); updateQueueChip(); log('Queued'); }catch{ log('Preload failed'); }
 };
-
+btnPlace.onclick = async()=>{
+  const cat=catSel.value; const idx=Number(modelSel.value);
+  if (Number.isNaN(idx)) return;
+  try{ await preload(cat, idx); queue.unshift({cat,idx}); updateQueueChip(); log('Armed placement'); }catch{ log('Preload failed'); }
+};
 btnUndo.onclick = ()=>{
-  const o = placed.pop();
-  if (o){ scene.remove(o); if (o===selected){ selected=null; setEdit(false); } }
-  log('Undo');
+  const last=placed.pop(); if(last){ last.parent?.remove(last); if (last===selected){ selected=null; setEdit(false);} }
 };
-
 btnClear.onclick = ()=>{
-  while(placed.length){ const o=placed.pop(); scene.remove(o); }
-  selected=null; setEdit(false); log('Cleared');
+  while(placed.length){ const o=placed.pop(); o.parent?.remove(o); }
+  selected=null; setEdit(false);
+  log('Cleared');
 };
 
-btnHide.onclick = ()=> toggleHUD(true);
-showUi.onclick  = ()=> toggleHUD(false);
+// Tap to place from queue
+renderer.domElement.addEventListener('pointerdown', onPointerDown);
+function getPlaneHit(clientX, clientY){
+  // screen → NDC
+  pointer.x =  (clientX / innerWidth) * 2 - 1;
+  pointer.y = -(clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObject(bgPlane, true)[0];
+  return hit || null;
+}
+function onPointerDown(e){
+  const hit = getPlaneHit(e.clientX, e.clientY);
+  if (!hit) return;
+  const hitPoint = hit.point;
 
-btnHideCtl.onclick = ()=> toggleControls(true);
-showCtl.onclick    = ()=> toggleControls(false);
+  // If editing & touching a placed object area, we’ll start gesture-move in move section
+  // Else, if queued item exists, place next:
+  if (queue.length){
+    const {cat, idx} = queue.shift(); updateQueueChip();
+    const obj = cloneFrom(cat, idx);
+    // Snap onto plane: orient to plane (face camera)
+    obj.position.copy(hitPoint);
+    // small lift so it doesn't z-fight
+    obj.position.z += 0.01;
+    scene.add(obj); placed.push(obj);
+    selected=obj; setEdit(true);
+    log('Placed');
+  }else{
+    // If no queue, select nearest placed object to tap point (simple pick on Z=plane)
+    const nearest = pickNearestAt(hitPoint);
+    if (nearest){ selected = nearest; setEdit(true); }
+  }
 
-// Toolbar
+  // Start possible drag move
+  if (selected){
+    gesture = { mode:'move', lastPt: hitPoint.clone(), id: e.pointerId };
+    renderer.domElement.setPointerCapture(e.pointerId);
+  }
+}
+function pickNearestAt(p){ // naive: nearest by XY distance
+  let best=null, dmin=1e9;
+  for (const o of placed){
+    const d = o.position.clone().sub(p).length();
+    if (d<dmin){ dmin=d; best=o; }
+  }
+  return best;
+}
+
+renderer.domElement.addEventListener('pointermove', (e)=>{
+  if (!gesture || !selected) return;
+  if (gesture.mode!=='move') return;
+  const hit = getPlaneHit(e.clientX, e.clientY); if (!hit) return;
+  const p = hit.point;
+  // smooth
+  selected.position.lerp(p, 0.35);
+});
+
+renderer.domElement.addEventListener('pointerup', (e)=>{
+  if (gesture && e.pointerId===gesture.id){
+    gesture=null;
+    renderer.domElement.releasePointerCapture(e.pointerId);
+  }
+});
+
+// Gestures: pinch to scale, twist to rotate
+const touches = new Map();
+function toPt(t){ return ({x:t.clientX,y:t.clientY}); }
+function dist(a,b){ return Math.hypot(b.x-a.x,b.y-a.y); }
+function ang(a,b){ return Math.atan2(b.y-a.y,b.x-a.x); }
+
+renderer.domElement.addEventListener('touchstart',(e)=>{
+  for (const t of e.touches) touches.set(t.identifier, toPt(t));
+  if (!editing || !selected) return;
+  if (e.touches.length===2){
+    const p1 = toPt(e.touches[0]), p2=toPt(e.touches[1]);
+    gesture = { mode:'pinch', startDist:dist(p1,p2), startAng:ang(p1,p2), baseScale:selected.scale.x, baseRot:selected.rotation.y };
+  }
+},{passive:true});
+
+renderer.domElement.addEventListener('touchmove',(e)=>{
+  if (!editing || !selected || !gesture) return;
+  if (gesture.mode!=='pinch' || e.touches.length!==2) return;
+  const p1 = toPt(e.touches[0]), p2=toPt(e.touches[1]);
+  // scale
+  let s = gesture.baseScale * (dist(p1,p2)/gesture.startDist);
+  s = Math.min(Math.max(s,0.05),10);
+  selected.scale.setScalar(s);
+  // rotate
+  const delta = ang(p1,p2) - gesture.startAng;
+  selected.rotation.y = gesture.baseRot + delta;
+},{passive:true});
+
+renderer.domElement.addEventListener('touchend',()=>{ if(gesture?.mode==='pinch') gesture=null; },{passive:true});
+
+// Edit toolbar
 rotL.onclick = ()=>{ if(selected) selected.rotation.y -= Math.PI/18; };
 rotR.onclick = ()=>{ if(selected) selected.rotation.y += Math.PI/18; };
 sMinus.onclick= ()=>{ if(selected){ const s=Math.max(0.05, selected.scale.x*0.9); selected.scale.setScalar(s);} };
 sPlus.onclick = ()=>{ if(selected){ const s=Math.min(10, selected.scale.x*1.1); selected.scale.setScalar(s);} };
 btnDone.onclick = ()=>{ setEdit(false); selected=null; };
 
-// Export composite
-btnExport.onclick = ()=>{
-  if (!bgTexture){ log('No photo to export'); return; }
-  const url = renderer.domElement.toDataURL('image/png');
-  const a=document.createElement('a'); a.href=url; a.download=`compose-${Date.now()}.png`; a.click();
-};
+// Render loop
+function onResize(){
+  const w=innerWidth, h=innerHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', onResize);
+onResize();
 
-// ---------- Placement & Gestures ----------
-let placing=null;       // {cat,idx} when user clicked +Place
-let dragging=false;     // move selected with one-finger drag
-let pinch=null;         // {startDist, startAng, baseScale, baseRotY}
-
-renderer.domElement.addEventListener('pointerdown', (e)=>{
-  if (!bgTexture) return; // need a photo
-  setPointerFromEvent(e);
-
-  // If we’re currently arming a placement
-  if (placing){
-    const hit = intersectGround();
-    if (hit){
-      const obj = cloneFrom(placing.cat, placing.idx);
-      obj.position.copy(hit.point);
-      obj.position.y = 0; // on ground
-      scene.add(obj);
-      placed.push(obj);
-      selected = obj; setEdit(true);
-      hint.style.display='none';
-      placing=null;
-      log('Placed');
-    }
-    return;
-  }
-
-  // If touching an existing object? (simple heuristic: last placed)
-  if (placed.length){
-    selected = placed[placed.length-1];
-    setEdit(true);
-  }
-
-  dragging = true;
-});
-renderer.domElement.addEventListener('pointermove', (e)=>{
-  if (!dragging || !selected) return;
-  setPointerFromEvent(e);
-  const hit = intersectGround();
-  if (hit){
-    // Smoothly move on plane
-    selected.position.lerp(new THREE.Vector3(hit.point.x, 0, hit.point.z), 0.35);
-  }
-});
-renderer.domElement.addEventListener('pointerup', ()=>{ dragging=false; });
-
-// Touch pinch/twist for scale/rotate
-function toPt(t){ return ({x:t.clientX, y:t.clientY}); }
-function d2(a,b){ return Math.hypot(b.x-a.x, b.y-a.y); }
-function ang(a,b){ return Math.atan2(b.y-a.y, b.x-a.x); }
-
-renderer.domElement.addEventListener('touchstart', (e)=>{
-  if (!selected) return;
-  if (e.touches.length===2){
-    const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
-    pinch = { startDist:d2(p1,p2), startAng:ang(p1,p2), baseScale:selected.scale.x, baseRotY:selected.rotation.y };
-  }
-},{passive:true});
-
-renderer.domElement.addEventListener('touchmove', (e)=>{
-  if (!selected || !pinch || e.touches.length!==2) return;
-  const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
-  // scale
-  let s = pinch.baseScale * (d2(p1,p2)/pinch.startDist);
-  s = Math.min(Math.max(s,0.05), 10);
-  selected.scale.setScalar(s);
-  // rotate
-  const delta = ang(p1,p2) - pinch.startAng;
-  selected.rotation.y = pinch.baseRotY + delta;
-},{passive:true});
-
-renderer.domElement.addEventListener('touchend', ()=>{ pinch=null; }, {passive:true});
-
-// ---------- Render loop & resize ----------
-function render(){ renderer.render(scene, camera); requestAnimationFrame(render); }
-render();
-
-addEventListener('resize', ()=>{
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-});
+(function animate(){
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+})();
 </script>
 </body>
 </html>
