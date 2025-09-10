@@ -1,65 +1,58 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Event AR — Queue + Edit + Recording</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>The New Innings Planner — AR Demo</title>
 <style>
   :root { color-scheme: dark; }
-  html,body { margin:0; height:100%; background:#0b0b0f; color:#e8eaf1; font:15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  html,body { margin:0; height:100%; background:#0b0b0f; color:#e6e6eb; font:15px system-ui,-apple-system,Segoe UI,Roboto; }
   canvas { display:block; width:100vw; height:100vh; touch-action:none; }
 
-  /* Top HUD */
-  #hud {
-    position:fixed; inset:0 0 auto 0; padding:10px 12px; display:flex; gap:8px; align-items:center;
-    background:linear-gradient(180deg, rgba(10,10,14,.92) 0%, rgba(10,10,14,.60) 80%, rgba(10,10,14,0) 100%);
-    z-index:6;
-  }
-  label { opacity:.9; }
-  select,button {
-    height:42px; border-radius:12px; border:1px solid #2a2e36; background:#151821; color:#fff; padding:0 12px; font-size:15px;
-  }
-  select { min-width:160px; max-width:48vw; }
-  button.primary { background:#2b6cff; border-color:#2b6cff; }
-  button.ghost { background:#1a1d26; }
-  button.small { height:36px; font-size:13px; padding:0 10px; }
+  /* Top bar */
+  #hud { position:fixed; inset:0 0 auto 0; z-index:10; padding:10px; display:flex; gap:8px; align-items:center;
+         background:linear-gradient(180deg,rgba(8,10,14,.90),rgba(8,10,14,.65) 60%, rgba(8,10,14,0) 100%); }
+  select, button { height:42px; border-radius:12px; border:1px solid #2a2e36; background:#14161b; color:#fff; padding:0 12px; }
+  select { min-width:150px; max-width:45vw; }
+  button.primary { background:#2563ff; border-color:#2563ff; }
+  button.ghost { background:#191b22; }
+  button.icon { width:42px; padding:0; display:grid; place-items:center; }
+  button:disabled { opacity:.45; }
 
-  #right { margin-left:auto; display:flex; gap:8px; align-items:center; }
-  #chip { font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #2a2e36; background:#12141a; }
-  #chip.on { border-color:#2f9e44; color:#b7ffbe; }
+  #spacer { flex:1; }
+  #brand { display:flex; align-items:center; gap:8px; font-weight:600; }
+  #brand img { width:28px; height:28px; border-radius:6px; object-fit:cover; }
 
-  /* Bottom buttons */
-  #enter { position:fixed; left:50%; transform:translateX(-50%); bottom:22px; z-index:6;
-           height:54px; border-radius:28px; padding:0 22px; }
+  /* Bottom actions */
+  #bottom { position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:10; display:flex; gap:8px; }
+  #enter { height:54px; border-radius:28px; padding:0 20px; }
 
-  /* Edit HUD (bottom center) */
-  #editHud {
-    position:fixed; left:50%; transform:translateX(-50%); bottom:22px; display:none; gap:8px; z-index:7;
-  }
+  /* Edit HUD */
+  #editHud { position:fixed; left:50%; transform:translateX(-50%); bottom:82px; z-index:10; display:none; gap:8px; }
+  #hint { position:fixed; left:50%; transform:translateX(-50%); bottom:140px; background:rgba(0,0,0,.55);
+          padding:8px 12px; border-radius:10px; font-size:13px; display:none; z-index:10; }
 
-  /* Hint bubble */
-  #hint { position:fixed; left:50%; transform:translateX(-50%); bottom:92px;
-          background:rgba(0,0,0,.55); padding:8px 12px; border-radius:12px; font-size:13px; z-index:6; display:none; }
-
-  /* Reticle overlay (CSS ring) + 3D reticle */
+  /* Reticle */
   #reticle2d { position:fixed; width:44px; height:44px; left:calc(50% - 22px); top:calc(50% - 22px);
-               border:4px solid #1ea0ff; border-radius:50%; opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:5; }
+               border:4px solid #1ea0ff; border-radius:50%; opacity:0; pointer-events:none; transition:opacity .18s; z-index:9; }
 
-  /* Floating UI toggles */
-  #toggleUI, #showUI {
-    position:fixed; right:14px; bottom:22px; z-index:8; height:44px; width:44px; border-radius:12px; padding:0;
-  }
-  #showUI { display:none; }
+  /* Toast */
+  #toast { position:fixed; left:50%; transform:translateX(-50%); top:12px; padding:6px 10px; border-radius:10px;
+           background:rgba(0,0,0,.55); font:12px ui-monospace,Menlo,Consolas,monospace; z-index:11; display:none; }
 
-  /* Mobile tweaks */
-  @media (max-width: 420px) {
-    select { min-width:140px; }
-    #enter { bottom:18px; height:50px; }
-    #editHud { bottom:18px; }
+  /* Show-UI pill (visible when HUD hidden) */
+  #showUi { position:fixed; left:12px; top:12px; z-index:11; display:none; height:42px; border-radius:20px; padding:0 12px; }
+
+  /* Mobile friendliness */
+  @media (max-width:480px){
+    #brand span { display:none; }
+    select { min-width:130px; }
+    #bottom { bottom:14px; }
+    #hint { bottom:118px; }
   }
 </style>
 
-<!-- Local import map -->
+<!-- Import map for local Three.js modules -->
 <script type="importmap">
 {
   "imports": {
@@ -71,418 +64,364 @@
 </head>
 <body>
 
-<!-- HUD -->
+<!-- Top HUD -->
 <div id="hud">
-  <label for="catSel">Category</label>
+  <div id="brand">
+    <img src="./brand-logo.png" alt="Logo" onerror="this.style.display='none'"/>
+    <span>The New Innings Planner</span>
+  </div>
+
   <select id="catSel"><option>Loading…</option></select>
+  <select id="modelSel" disabled><option>Select category</option></select>
 
-  <label for="modelSel">Model</label>
-  <select id="modelSel"><option>Loading…</option></select>
-
-  <button id="btnQueue" class="primary">+ Add</button>
-  <button id="btnPlace" class="ghost">Place now</button>
-  <button id="btnUndo"  class="ghost">↶ Undo</button>
+  <button id="btnAdd" class="primary">+ Queue</button>
+  <button id="btnUndo" class="ghost">↺ Undo</button>
   <button id="btnClear" class="ghost">🗑 Clear</button>
 
-  <div id="right">
-    <span id="chip">Edit: off</span>
-    <button id="btnRec" class="ghost">⏺ Start</button>
-    <button id="toggleUI" title="Hide UI" class="ghost">👁</button>
-  </div>
+  <div id="spacer"></div>
+
+  <button id="btnRec" class="ghost">⏺ Record</button>
+  <button id="btnHide" class="icon ghost" title="Hide UI">👁️</button>
 </div>
 
-<!-- Bring HUD back -->
-<button id="showUI" class="ghost" title="Show UI">🫣</button>
+<!-- Show UI pill when hidden -->
+<button id="showUi" class="ghost">👁️ Show UI</button>
 
-<!-- Edit HUD -->
+<!-- Edit HUD (appears after placement) -->
 <div id="editHud">
-  <button id="btnDone"  class="primary small">✅ Done</button>
-  <button id="rotL"    class="ghost small">◀ Rotate</button>
-  <button id="rotR"    class="ghost small">Rotate ▶</button>
-  <button id="sMinus"  class="ghost small">Scale −</button>
-  <button id="sPlus"   class="ghost small">Scale +</button>
-  <button id="btnLock" class="ghost small">🔒 Lock</button>
+  <button id="rotL" class="ghost">◀ Rotate</button>
+  <button id="rotR" class="ghost">Rotate ▶</button>
+  <button id="sMinus" class="ghost">Scale −</button>
+  <button id="sPlus"  class="ghost">Scale +</button>
+  <button id="btnDone" class="primary">✅ Done</button>
 </div>
 
 <div id="hint">Tap to place next queued model</div>
 <div id="reticle2d"></div>
-<button id="enter" class="primary">📷 Enter AR</button>
+
+<!-- Bottom main action -->
+<div id="bottom">
+  <button id="enter" class="primary">📷 Enter AR</button>
+</div>
+
+<div id="toast"></div>
 
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-// ---------- DOM ----------
 const $ = id => document.getElementById(id);
+
+// UI refs
+const hud      = $('hud');
+const showUi   = $('showUi');
 const catSel   = $('catSel');
 const modelSel = $('modelSel');
-const btnQueue = $('btnQueue');
-const btnPlace = $('btnPlace');
+const btnAdd   = $('btnAdd');
 const btnUndo  = $('btnUndo');
 const btnClear = $('btnClear');
 const btnRec   = $('btnRec');
-const toggleUI = $('toggleUI');
-const showUI   = $('showUI');
-const chip     = $('chip');
-const hintEl   = $('hint');
+const btnHide  = $('btnHide');
 const enterBtn = $('enter');
-
 const editHud  = $('editHud');
-const btnDone  = $('btnDone');
 const rotL     = $('rotL');
 const rotR     = $('rotR');
 const sMinus   = $('sMinus');
 const sPlus    = $('sPlus');
-const btnLock  = $('btnLock');
-const reticle2d= $('reticle2d');
+const btnDone  = $('btnDone');
+const hintEl   = $('hint');
+const reticle2d = $('reticle2d');
+const toast    = $('toast');
 
-// ---------- State ----------
-let catalog = [];              // flat array of items OR grouped by categories
-let categories = [];           // derived categories
-let currentList = [];          // models for selected category
-let queue = [];                // indices into currentList
-let placed = [];               // THREE.Object3D[]
-let cache = new Map();         // url -> GLTF.scene
-let selected = null;
-let editing  = false;
-let locked   = false;
+const log = (m, ms=1600) => {
+  toast.textContent = m; toast.style.display='block';
+  clearTimeout(log._t); log._t = setTimeout(()=> toast.style.display='none', ms);
+};
 
-// Recording
-let recorder=null, chunks=[], recording=false;
+// Catalog
+const CATALOG_URL = './models/models.json?v=' + Date.now(); // cache-buster
+let catalog = { categories:{} };
+let catOrder = []; // for UI
 
-// ---------- Three.js ----------
-const renderer = new THREE.WebGLRenderer({
-  antialias: true, alpha: true, preserveDrawingBuffer: true
-});
-renderer.xr.enabled = true;
+// Scene
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const scene  = new THREE.Scene();
+const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 100);
 
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.9);
-scene.add(hemi);
-const dir  = new THREE.DirectionalLight(0xffffff, 1.1);
-dir.position.set(3,5,2);
-dir.castShadow = true;
-scene.add(dir);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.9); scene.add(hemi);
+const dir  = new THREE.DirectionalLight(0xffffff, 1.0); dir.position.set(2,5,2); dir.castShadow=true; scene.add(dir);
 
 const reticle3D = new THREE.Mesh(
   new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2),
-  new THREE.MeshBasicMaterial({ color:0x4da3ff })
+  new THREE.MeshBasicMaterial({ color:0x1ea0ff })
 );
-reticle3D.visible = false;
-reticle3D.matrixAutoUpdate = false;
-scene.add(reticle3D);
+reticle3D.visible = false; reticle3D.matrixAutoUpdate = false; scene.add(reticle3D);
 
 // Loaders
-const draco = new DRACOLoader(); draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
-const gltf  = new GLTFLoader();  gltf.setDRACOLoader(draco);
+const draco = new DRACOLoader();
+draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf = new GLTFLoader();
+gltf.setDRACOLoader(draco);
 
-// ---------- Catalog load ----------
-const CATALOG_URL = './models/models.json?v=' + Date.now(); // cache-buster
-const r = await fetch(CATALOG_URL, { cache: 'no-store' });
-async function loadCatalog(){
-  try{
-    const res = await fetch(CATALOG_URL, { cache:'no-store' });
-    const data = await res.json();
+// States
+const cache = new Map();   // url -> THREE.Object3D (scene)
+const queue = [];          // array of {cat, index}
+const placed = [];         // scene objects
+let xrSession=null, xrRefSpace=null, viewerSpace=null, hitTestSource=null;
+let editing=false, selected=null;
+let pinchState=null;
+let recording=false, mediaRecorder=null, chunks=[];
 
-    // Accept either {categories:[{name,items:[]},...]} OR a flat array
-    if (Array.isArray(data)) {
-      categories = ['All'];
-      catalog = data;
-    } else if (Array.isArray(data.categories)) {
-      categories = data.categories.map(c=>c.name);
-      // Flatten for cache, but keep groups
-      catalog = data.categories.flatMap(c => c.items.map(it => ({...it, __cat:c.name})));
-    } else {
-      throw new Error('Unsupported models.json format');
-    }
-
-    // Fill category dropdown
-    catSel.innerHTML = '';
-    for (const name of categories){
-      const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
-      catSel.appendChild(opt);
-    }
-
-    // Initialize list
-    switchCategory(categories[0]);
-  }catch(e){
-    catSel.innerHTML = '<option>Load failed</option>';
-    modelSel.innerHTML = '<option>Load failed</option>';
-    console.error('Catalog error:', e);
-    alert('Failed to load models catalog.');
-  }
-}
-
-function switchCategory(catName){
-  // filter models for selected category
-  currentList = (catName==='All')
-    ? [...catalog]
-    : catalog.filter(it => it.__cat === catName);
-
-  // populate modelSel
-  modelSel.innerHTML = '';
-  for (let i=0; i<currentList.length; i++){
-    const it = currentList[i];
-    const opt = document.createElement('option');
-    opt.value = String(i);
-    opt.textContent = it.name || `Model ${i+1}`;
-    modelSel.appendChild(opt);
-  }
-  queue.length = 0;
-  showHint('');
-}
-catSel.onchange = ()=> switchCategory(catSel.value);
-
-await loadCatalog();
-
-// ---------- Helpers ----------
-function showHint(t){ hintEl.textContent = t; hintEl.style.display = t ? 'block' : 'none'; }
-function enableShadows(obj,on){ obj.traverse(n=>{ if(n.isMesh){ n.castShadow=on; n.receiveShadow=on; }}); }
-async function preload(idx){
-  const it = currentList[idx]; if(!it) throw new Error('invalid model index');
-  if (cache.has(it.url)) return cache.get(it.url);
-  const gl = await gltf.loadAsync(it.url);
-  cache.set(it.url, gl.scene);
+// Helpers
+function enableShadows(o,on){ o.traverse(n=>{ if(n.isMesh){ n.castShadow=on; n.receiveShadow=on; } }); }
+async function preload(catName, idx){
+  const item = catalog.categories[catName][idx];
+  if (!item) throw new Error('Invalid model index');
+  if (cache.has(item.url)) return cache.get(item.url);
+  const gl = await gltf.loadAsync(item.url);
+  cache.set(item.url, gl.scene);
   return gl.scene;
 }
-function cloneFromCache(idx){
-  const it  = currentList[idx];
-  const src = cache.get(it.url);
+function cloneFrom(catName, idx){
+  const item = catalog.categories[catName][idx];
+  const src = cache.get(item.url);
   const obj = src.clone(true);
-  const s = it.scale ?? 1; obj.scale.setScalar(s);
-  if (it.rotation) obj.rotation.set(...it.rotation);
-  if (it.position) obj.position.set(...it.position);
-  enableShadows(obj, it.shadow !== false);
-  obj.userData._name = it.name || it.url;
+  const s = item.scale ?? 1; obj.scale.setScalar(s);
+  if (item.rotation) obj.rotation.set(...item.rotation);
+  if (item.position) obj.position.set(...item.position);
+  enableShadows(obj, item.shadow !== false);
   return obj;
 }
 function setEdit(on){
   editing = on;
-  chip.textContent = `Edit: ${on?'on':'off'}`;
-  chip.classList.toggle('on', on);
   editHud.style.display = on ? 'flex' : 'none';
-  showHint(on ? 'Pinch = scale · twist = rotate' : (queue.length?'Tap to place next queued model':''));
+  hintEl.style.display = (renderer.xr.isPresenting && !on && queue.length>0) ? 'block' : 'none';
 }
-function setLock(on){
-  locked = on;
-  btnLock.textContent = on ? '🔓 Unlock' : '🔒 Lock';
+function showReticle(show){
+  reticle3D.visible = !!show;
+  reticle2d.style.opacity = show ? 1 : 0;
+}
+function updateModelOptions(){
+  modelSel.innerHTML = '';
+  const cat = catSel.value;
+  const arr = catalog.categories[cat] || [];
+  for (let i=0;i<arr.length;i++){
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = arr[i].name || `Model ${i+1}`;
+    modelSel.appendChild(opt);
+  }
+  modelSel.disabled = arr.length===0;
+}
+function toggleHUD(hide){
+  hud.style.display = hide ? 'none' : 'flex';
+  showUi.style.display = hide ? 'inline-block' : 'none';
 }
 
-// ---------- UI actions ----------
-btnQueue.onclick = async ()=>{
-  const idx = Number(modelSel.value);
-  if (Number.isNaN(idx)) return;
+// Catalog load
+(async()=>{
   try{
-    await preload(idx);
-    queue.push(idx);
-    showHint('Tap on the ring to place next queued model');
-  }catch(e){
-    alert('Preload failed: '+e.message);
-  }
-};
+    const r = await fetch(CATALOG_URL, { cache:'no-store' });
+    let txt = await r.text();
+    if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1); // strip BOM
+    const data = JSON.parse(txt);
+    // normalize: accept {categories:{...}} OR raw array
+    if (Array.isArray(data)) catalog = { categories: { Default: data } };
+    else catalog = data;
 
-btnPlace.onclick = async ()=>{
-  const idx = Number(modelSel.value);
-  if (Number.isNaN(idx)) return;
-  try{
-    await preload(idx);
-    queue.unshift(idx); // prioritize
-    showHint('Tap on the ring to place next queued model');
+    catOrder = Object.keys(catalog.categories);
+    catSel.innerHTML = '';
+    for (const c of catOrder){
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      catSel.appendChild(opt);
+    }
+    updateModelOptions();
+    log(`Catalog loaded (${catOrder.length} categories)`);
   }catch(e){
-    alert('Preload failed: '+e.message);
+    catSel.innerHTML = '<option>Failed to load</option>';
+    modelSel.innerHTML = '<option>—</option>';
+    log('Failed to load catalog');
   }
+})();
+
+// UI events
+catSel.onchange = updateModelOptions;
+
+btnAdd.onclick = async ()=>{
+  const cat = catSel.value;
+  const idx = Number(modelSel.value);
+  if (!cat || Number.isNaN(idx)) return;
+  try{
+    await preload(cat, idx);
+    queue.push({cat, idx});
+    log(`Queued: ${catalog.categories[cat][idx].name}`);
+    if (renderer.xr.isPresenting) hintEl.style.display='block';
+  }catch(e){ log('Preload error'); }
 };
 
 btnUndo.onclick = ()=>{
   const o = placed.pop();
-  if (o){ o.parent?.remove(o); if (o===selected){ selected=null; setEdit(false);} }
+  if (o) o.parent?.remove(o);
+  if (o === selected) { selected=null; setEdit(false); }
+  log('Undo');
 };
 
 btnClear.onclick = ()=>{
-  for (const o of placed){ o.parent?.remove(o); }
-  placed.length = 0; selected=null; setEdit(false); setLock(false);
+  while (placed.length) placed.pop().parent?.remove(placed[placed.length-1]);
+  selected=null; setEdit(false);
+  log('Cleared');
 };
 
-// Edit buttons
-btnDone.onclick = ()=> setEdit(false);
+btnHide.onclick = ()=> toggleHUD(true);
+showUi.onclick  = ()=> toggleHUD(false);
+
+// Recording
+btnRec.onclick = ()=>{
+  if (recording){
+    try{ mediaRecorder?.stop(); }catch{}
+    btnRec.textContent='⏺ Record';
+    recording=false;
+    log('Recording stopped');
+    return;
+  }
+  const stream = renderer.domElement.captureStream ? renderer.domElement.captureStream(30) : null;
+  if (!stream){ log('Recording not supported here'); return; }
+  let mime='video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm;codecs=vp8';
+  if (!MediaRecorder.isTypeSupported(mime)) mime='video/webm';
+  chunks=[];
+  try{
+    mediaRecorder = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond:7_000_000 });
+  }catch(e){ log('Recorder init failed'); return; }
+  mediaRecorder.ondataavailable = e=>{ if (e.data.size) chunks.push(e.data); };
+  mediaRecorder.onstop = ()=>{
+    const blob = new Blob(chunks,{type:mime});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=`ar-recording-${Date.now()}.webm`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  };
+  mediaRecorder.start();
+  recording=true; btnRec.textContent='⏹ Stop';
+  log('Recording…');
+};
+
+// Edit controls
 rotL.onclick = ()=>{ if(selected) selected.rotation.y -= Math.PI/18; };
 rotR.onclick = ()=>{ if(selected) selected.rotation.y += Math.PI/18; };
-sMinus.onclick= ()=>{ if(selected){ const s=Math.max(0.1, selected.scale.x*0.9); selected.scale.setScalar(s);} };
-sPlus.onclick = ()=>{ if(selected){ const s=Math.min(10,  selected.scale.x*1.1); selected.scale.setScalar(s);} };
-btnLock.onclick= ()=> setLock(!locked);
+sMinus.onclick= ()=>{ if(selected){ const s=Math.max(0.05, selected.scale.x*0.9); selected.scale.setScalar(s);} };
+sPlus.onclick = ()=>{ if(selected){ const s=Math.min(10, selected.scale.x*1.1); selected.scale.setScalar(s);} };
+btnDone.onclick = ()=>{ setEdit(false); selected=null; };
 
-// Hide / show UI
-toggleUI.onclick = ()=>{
-  $('hud').style.display = 'none';
-  editHud.style.display = 'none';
-  showUI.style.display = 'inline-block';
-};
-showUI.onclick = ()=>{
-  $('hud').style.display = 'flex';
-  if (editing) editHud.style.display = 'flex';
-  showUI.style.display = 'none';
-};
+// Gestures (pinch to scale, twist to rotate) — active only while editing
+const toPt = t => ({x:t.clientX, y:t.clientY});
+const dist = (a,b)=> Math.hypot(b.x-a.x, b.y-a.y);
+const ang  = (a,b)=> Math.atan2(b.y-a.y, b.x-a.x);
 
-// ---------- AR ----------
-let xrRefSpace=null, hitTestSource=null;
+renderer.domElement.addEventListener('touchstart', (e)=>{
+  if (!editing || !selected) return;
+  if (e.touches.length===2){
+    const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
+    pinchState = {
+      startDist: dist(p1,p2),
+      startAng:  ang(p1,p2),
+      baseScale: selected.scale.x,
+      baseRotY:  selected.rotation.y
+    };
+  }
+},{passive:true});
 
+renderer.domElement.addEventListener('touchmove', (e)=>{
+  if (!editing || !selected || !pinchState || e.touches.length!==2) return;
+  const p1=toPt(e.touches[0]), p2=toPt(e.touches[1]);
+  // scale
+  let s = pinchState.baseScale * (dist(p1,p2)/pinchState.startDist);
+  s = Math.min(Math.max(s,0.05),10);
+  selected.scale.setScalar(s);
+  // rotate
+  const delta = ang(p1,p2) - pinchState.startAng;
+  selected.rotation.y = pinchState.baseRotY + delta;
+},{passive:true});
+
+renderer.domElement.addEventListener('touchend', ()=>{ pinchState=null; }, {passive:true});
+
+// AR session
 enterBtn.onclick = async ()=>{
+  if (xrSession){ xrSession.end(); return; }
+
   if (!navigator.xr){ alert('WebXR not available'); return; }
-  if (!await navigator.xr.isSessionSupported('immersive-ar')) { alert('immersive-ar not supported'); return; }
+  const ok = await navigator.xr.isSessionSupported('immersive-ar');
+  if (!ok){ alert('immersive-ar not supported on this device/browser'); return; }
 
-  // Enable AR
-  const session = await navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['hit-test','local-floor'],
-    optionalFeatures: ['dom-overlay'],
-    domOverlay: { root: document.body } // keep HUD/gestures
+  // Keep UI on screen with dom-overlay
+  xrSession = await navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures:['hit-test','local-floor'],
+    optionalFeatures:['dom-overlay'],
+    domOverlay:{ root: document.body }
   });
-  renderer.xr.setSession(session);
-  enterBtn.textContent = '⏻ Exit AR';
+  renderer.xr.setSession(xrSession);
 
-  xrRefSpace = await session.requestReferenceSpace('local-floor');
-  const viewer = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({ space: viewer });
+  xrRefSpace   = await xrSession.requestReferenceSpace('local-floor');
+  viewerSpace  = await xrSession.requestReferenceSpace('viewer');
+  hitTestSource = await xrSession.requestHitTestSource({ space: viewerSpace });
 
-  session.addEventListener('end', ()=>{
-    hitTestSource=null; xrRefSpace=null; reticle3D.visible=false; reticle2d.style.opacity=0;
-    setEdit(false); setLock(false); enterBtn.textContent='📷 Enter AR';
+  xrSession.addEventListener('end', ()=>{
+    xrSession=null; xrRefSpace=null; viewerSpace=null; hitTestSource=null;
+    showReticle(false); setEdit(false); selected=null;
+    enterBtn.textContent='📷 Enter AR';
+    log('AR ended');
   });
 
-  // Tap to place
-  session.addEventListener('select', ()=>{
-    if (editing || locked || queue.length===0 || !reticle3D.visible) return;
-    const idx = queue.shift();
-    const obj = cloneFromCache(idx);
+  // Tap to place next in queue (if any)
+  xrSession.addEventListener('select', ()=>{
+    if (editing || queue.length===0 || !reticle3D.visible) return;
+    const {cat, idx} = queue.shift();
+    const obj = cloneFrom(cat, idx);
     obj.applyMatrix4(reticle3D.matrix);
     scene.add(obj);
     placed.push(obj);
-    selected = obj; setEdit(true); setLock(false);
+    selected=obj; setEdit(true);
+    hintEl.style.display='none';
+    log('Placed: ' + (catalog.categories[cat][idx].name||'model'));
   });
 
-  // AR loop
+  // XR render loop
   renderer.setAnimationLoop((t, frame)=>{
     if (frame && hitTestSource && xrRefSpace){
       const hits = frame.getHitTestResults(hitTestSource);
-      const can = (!editing && queue.length>0 && hits.length>0);
-      if (can){
+      const canShow = (!editing && queue.length>0 && hits.length>0);
+      if (canShow){
         const pose = hits[0].getPose(xrRefSpace);
         reticle3D.matrix.fromArray(pose.transform.matrix);
       }
-      reticle3D.visible = can;
-      reticle2d.style.opacity = can ? 1 : 0;
-      showHint(can ? 'Tap to place next queued model' : (editing?'Pinch = scale · twist = rotate':''));
+      showReticle(canShow);
     }
     renderer.render(scene, camera);
   });
+
+  enterBtn.textContent='⏻ Exit AR';
+  if (queue.length>0) hintEl.style.display='block';
+  log('AR started — queue a model, then tap to place');
 };
 
-// Gestures (pinch + twist)
-const dist=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
-const ang =(a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
-let gTwo=null;
+// Non-AR loop
+(function loop(){
+  if (!renderer.xr.isPresenting) renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+})();
 
-function pt(t){ return ({x:t.clientX,y:t.clientY}); }
-
-renderer.domElement.addEventListener('touchstart',(e)=>{
-  if(!editing || !selected) return;
-  if(e.touches.length===2){
-    const p1=pt(e.touches[0]), p2=pt(e.touches[1]);
-    gTwo={ startDist: dist(p1,p2), startAng: ang(p1,p2), startScale: selected.scale.x, startRotY: selected.rotation.y };
-  }
-},{passive:true});
-
-renderer.domElement.addEventListener('touchmove',(e)=>{
-  if(!editing || !selected || !gTwo || e.touches.length!==2) return;
-  const p1=pt(e.touches[0]), p2=pt(e.touches[1]);
-  // scale
-  let s = gTwo.startScale * (dist(p1,p2)/gTwo.startDist);
-  s = Math.min(Math.max(s,0.1),10);
-  selected.scale.setScalar(s);
-  // rotate
-  const delta = ang(p1,p2) - gTwo.startAng;
-  selected.rotation.y = gTwo.startRotY + delta;
-},{passive:true});
-
-renderer.domElement.addEventListener('touchend',()=>{ gTwo=null; },{passive:true});
-
-// Non-XR render loop (so you can preview lighting)
-(function loop(){ if(!renderer.xr.isPresenting) renderer.render(scene,camera); requestAnimationFrame(loop);} )();
-
+// Resize
 addEventListener('resize', ()=>{
   renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
 });
-
-// ---------- Recording ----------
-function saveBlob(blob,name){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=name; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-}
-
-async function startRecording(){
-  chunks = [];
-  let stream = null;
-
-  const inAR = renderer.xr.isPresenting;
-
-  // Prefer screen capture in AR (records XR compositor on many Android devices)
-  if (inAR && navigator.mediaDevices?.getDisplayMedia){
-    try{
-      stream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:30 }, audio:false });
-    }catch(e){
-      // user canceled / blocked -> fall through
-    }
-  }
-
-  // Fallback: canvas capture (outside AR this works; in AR it's often black)
-  if (!stream && renderer.domElement.captureStream) {
-    stream = renderer.domElement.captureStream(30);
-  }
-
-  if (!stream){
-    alert('Recording is blocked on this device/browser. Use your phone’s screen recorder for reliable AR capture.');
-    return false;
-  }
-
-  let mime='video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm;codecs=vp8';
-  if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
-
-  recorder = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond:7_000_000 });
-  recorder.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => saveBlob(new Blob(chunks,{type:mime}), `ar-recording-${Date.now()}.webm`);
-
-  // If user stops screen-share from browser UI, stop our recorder too
-  const track = stream.getVideoTracks()[0];
-  if (track) track.addEventListener('ended', ()=>{ if(recording && recorder?.state==='recording') recorder.stop(); });
-
-  recorder.start();
-  return true;
-}
-
-async function toggleRecord(btn){
-  if (recording){
-    recorder?.stop();
-    recording=false;
-    btn.textContent='⏺ Start';
-    return;
-  }
-  const ok = await startRecording();
-  if (ok){
-    recording = true;
-    btn.textContent = '⏹ Stop';
-  }
-}
-btnRec.onclick = ()=> toggleRecord(btnRec);
-
 </script>
 </body>
 </html>
