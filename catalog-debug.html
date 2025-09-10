@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Catalog Debug — models/models.json</title>
+<style>
+  :root{color-scheme:dark}
+  html,body{margin:0;background:#0b0b0f;color:#e6e6eb;font:15px system-ui,-apple-system,Segoe UI,Roboto}
+  header{position:sticky;top:0;z-index:1;background:#0f1117;padding:12px 14px;border-bottom:1px solid #222}
+  h1{font-size:16px;margin:0}
+  #url{font:12px ui-monospace,Menlo,Consolas,monospace;color:#9aa0a6;word-break:break-all;margin-top:4px}
+  #log{padding:10px 14px;font:12px ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
+  .ok{color:#86efac}
+  .warn{color:#facc15}
+  .err{color:#fca5a5}
+  section{padding:10px 14px}
+  details{background:#0f1117;border:1px solid #222;border-radius:10px;margin:10px 0}
+  summary{cursor:pointer;padding:10px 12px}
+  ul{list-style:none;padding:0 12px 12px 12px;margin:0}
+  li{padding:6px 0;border-bottom:1px dashed #222}
+  code{background:#10131a;border:1px solid #222;border-radius:6px;padding:2px 6px}
+  .chip{display:inline-block;font-size:11px;border:1px solid #2a2e36;background:#14161b;border-radius:999px;padding:2px 8px;margin-left:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Catalog Debug</h1>
+  <div id="url"></div>
+</header>
+
+<section>
+  <div id="summary"></div>
+</section>
+
+<section>
+  <details open>
+    <summary>Log</summary>
+    <div id="log"></div>
+  </details>
+</section>
+
+<section>
+  <details open>
+    <summary>Categories & Models</summary>
+    <div id="content">Loading…</div>
+  </details>
+</section>
+
+<script type="module">
+const logEl = document.getElementById('log');
+const contentEl = document.getElementById('content');
+const summaryEl = document.getElementById('summary');
+const urlEl = document.getElementById('url');
+
+const CATALOG_URL = './models/models.json?v=' + Date.now(); // cache-buster
+urlEl.textContent = location.origin + location.pathname.replace(/\/[^/]*$/, '/') + CATALOG_URL;
+
+function log(msg, cls=''){ 
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = (new Date()).toLocaleTimeString() + ' — ' + msg;
+  logEl.appendChild(line);
+}
+
+function showErrorAlert(prefix, e){
+  alert(prefix + ': ' + (e?.message || e));
+}
+
+async function headOk(url){
+  try{
+    const r = await fetch(url, { method:'HEAD', cache:'no-store' });
+    return r.ok ? { ok:true, status:r.status } : { ok:false, status:r.status };
+  }catch(e){
+    return { ok:false, status:'ERR', err:e };
+  }
+}
+
+function normalizeItems(data){
+  // Accept either {categories:{...}} or raw array [ ... ]
+  if (data && data.categories && typeof data.categories === 'object') return data;
+  if (Array.isArray(data)) return { categories: { Default: data } };
+  return null;
+}
+
+(async function run(){
+  try{
+    log('Fetching catalog: ' + CATALOG_URL);
+    const r = await fetch(CATALOG_URL, { cache:'no-store' });
+    if (!r.ok){
+      log('HTTP ' + r.status + ' while fetching catalog', 'err');
+      showErrorAlert('Catalog fetch failed (HTTP ' + r.status + ')', new Error('HTTP '+r.status));
+      contentEl.textContent = 'Fetch failed (HTTP ' + r.status + ').';
+      return;
+    }
+
+    let txt = await r.text();
+
+    // Strip BOM if present
+    if (txt.charCodeAt(0) === 0xFEFF){
+      log('BOM detected — stripping', 'warn');
+      txt = txt.slice(1);
+    }
+
+    let data;
+    try{
+      data = JSON.parse(txt);
+    }catch(e){
+      log('JSON parse error: ' + e.message, 'err');
+      showErrorAlert('JSON parse error', e);
+      contentEl.textContent = 'JSON parse error: ' + e.message;
+      return;
+    }
+
+    const norm = normalizeItems(data);
+    if (!norm){
+      const msg = 'Unexpected shape. Expected {"categories":{...}} or an array.';
+      log(msg, 'err');
+      showErrorAlert('Invalid catalog shape', new Error(msg));
+      contentEl.textContent = msg;
+      return;
+    }
+
+    const cats = norm.categories;
+    const catNames = Object.keys(cats);
+    log('Catalog OK — categories: ' + catNames.join(', '), 'ok');
+
+    // Render list
+    const wrapper = document.createElement('div');
+    let total = 0, missing = 0;
+
+    for (const cat of catNames){
+      const items = Array.isArray(cats[cat]) ? cats[cat] : [];
+      total += items.length;
+
+      const d = document.createElement('details');
+      d.open = true;
+      const s = document.createElement('summary');
+      s.innerHTML = `<strong>${cat}</strong> <span class="chip">${items.length} items</span>`;
+      d.appendChild(s);
+
+      const ul = document.createElement('ul');
+      d.appendChild(ul);
+      wrapper.appendChild(d);
+
+      for (const it of items){
+        const li = document.createElement('li');
+        const url = (it?.url || '').replace(/^\.\//,'./'); // keep relative
+
+        li.innerHTML = `
+          <div><strong>${it?.name || '(no name)'}</strong></div>
+          <div>url: <code>${url}</code></div>
+        `;
+        ul.appendChild(li);
+
+        // Check the file exists
+        if (url){
+          const absolute = new URL(url, location.href).href;
+          const res = await headOk(absolute);
+          if (res.ok){
+            log(`OK ${res.status}: ${url}`, 'ok');
+          }else{
+            missing++;
+            log(`MISS ${res.status}: ${url}`, 'err');
+            const warn = document.createElement('div');
+            warn.className = 'err';
+            warn.textContent = `⚠ Not reachable (status ${res.status}). Check path/case or if file is pushed.`;
+            li.appendChild(warn);
+          }
+        } else {
+          log('Item missing "url" field', 'err');
+          const warn = document.createElement('div');
+          warn.className = 'err';
+          warn.textContent = '⚠ Item missing "url" field';
+          li.appendChild(warn);
+          missing++;
+        }
+      }
+    }
+
+    contentEl.innerHTML = '';
+    contentEl.appendChild(wrapper);
+    summaryEl.innerHTML = `
+      <div>Found <strong>${total}</strong> items in <strong>${catNames.length}</strong> categories.
+      ${missing ? `<span class="err">Missing/invalid: ${missing}</span>` : `<span class="ok">All reachable</span>`}
+      </div>
+    `;
+
+  }catch(e){
+    log('Unexpected error: ' + (e?.message || e), 'err');
+    showErrorAlert('Unexpected error', e);
+    contentEl.textContent = 'Unexpected error: ' + (e?.message || e);
+  }
+})();
+</script>
+</body>
+</html>
