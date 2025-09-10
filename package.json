@@ -1,6 +1,7 @@
-{
+﻿{
   "name": "event-ar-demo",
   "version": "1.0.0",
+  "private": true,
   "description": "",
   "main": "index.js",
   "directories": {
@@ -8,9 +9,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "meshy:add": "node tools/meshy-add.js"
+    "meshy:add": "node tools/meshy-add.js",
     "meshy:img2glb": "node tools/meshy-img2glb.js"
-    }
   },
   "repository": {
     "type": "git",
