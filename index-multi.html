@@ -183,7 +183,8 @@ const draco = new DRACOLoader(); draco.setDecoderPath('./lib/three/examples/jsm/
 const gltf  = new GLTFLoader();  gltf.setDRACOLoader(draco);
 
 // ---------- Catalog load ----------
-const CATALOG_URL = './models/models.json';
+const CATALOG_URL = './models/models.json?v=' + Date.now(); // cache-buster
+const r = await fetch(CATALOG_URL, { cache: 'no-store' });
 async function loadCatalog(){
   try{
     const res = await fetch(CATALOG_URL, { cache:'no-store' });
