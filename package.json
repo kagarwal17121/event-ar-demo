@@ -7,8 +7,10 @@
     "lib": "lib"
   },
   "scripts": {
-   "test": "echo \"Error: no test specified\" && exit 1",
-   "meshy:add": "node tools/meshy-add.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "meshy:add": "node tools/meshy-add.js"
+    "meshy:img2glb": "node tools/meshy-img2glb.js"
+    }
   },
   "repository": {
     "type": "git",
@@ -22,6 +24,7 @@
   },
   "homepage": "https://github.com/kagarwal17121/event-ar-demo#readme",
   "dependencies": {
-    "dotenv": "^17.2.2"
+    "dotenv": "^17.2.2",
+    "form-data": "^4.0.4"
   }
 }
