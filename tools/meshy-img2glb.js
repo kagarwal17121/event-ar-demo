@@ -17,10 +17,11 @@ const flag = (k) => {
   return v;
 };
 
-const imagePath = flag('image'); // required
-const name = flag('name') || 'New Model';
-const category = flag('category') || 'Unsorted';
-const prompt = flag('prompt') || 'High-quality event decor asset, clean geometry, PBR materials, real-world scale';
+const imageLocal = flag('image');           // local path (NOT accepted by your Meshy account)
+const imageUrl   = flag('imageUrl');        // public URL (REQUIRED for your Meshy account)
+const name       = flag('name')      || 'New Model';
+const category   = flag('category')  || 'Unsorted';
+const prompt     = flag('prompt')    || 'High-quality event decor asset, clean geometry, PBR, real scale';
 const thumbFromPreview = !!flag('thumbFromPreview');
 
 // ---------- Config ----------
@@ -34,19 +35,9 @@ if (!API_KEY) {
 //   https://api.meshy.ai/openapi/v1
 const BASE_URL = (process.env.MESHY_BASE_URL || 'https://api.meshy.ai/v1').replace(/\/+$/, '');
 const CREATE_URL = `${BASE_URL}/image-to-3d`;
-const TASK_URL = (id) => `${BASE_URL}/tasks/${id}`;
+const TASK_URL   = (id) => `${BASE_URL}/tasks/${id}`;
 
 // ---------- FS setup ----------
-if (!imagePath) {
-  console.error('✖ Missing --image <path>');
-  process.exit(1);
-}
-const absImage = path.resolve(process.cwd(), imagePath.replace(/^["']|["']$/g, ''));
-if (!fs.existsSync(absImage)) {
-  console.error(`✖ Image not found: ${absImage}`);
-  process.exit(1);
-}
-
 const MODELS_DIR = path.resolve(process.cwd(), 'models');
 const THUMBS_DIR = path.resolve(MODELS_DIR, 'thumbs');
 fs.mkdirSync(MODELS_DIR, { recursive: true });
@@ -67,6 +58,7 @@ async function httpJson(url, opts = {}) {
   }
   return body;
 }
+
 async function httpBuffer(url, opts = {}) {
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -78,24 +70,29 @@ async function httpBuffer(url, opts = {}) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ---------- 1) Create task (JSON + base64 image) ----------
-console.log(`▶ Creating Meshy task from: ${imagePath}`);
-console.log(`   POST ${CREATE_URL}`);
+// ---------- Validate input ----------
+if (!imageUrl) {
+  // You passed a local file (or nothing). Your Meshy account requires a public URL.
+  if (imageLocal) {
+    console.error('✖ Your Meshy endpoint requires a public image URL.\n' +
+      '  Please upload your image somewhere public (e.g. GitHub “raw”, Cloudinary, S3) and run with:\n' +
+      '    --imageUrl "https://example.com/your.jpg"\n' +
+      '  Tip (GitHub): commit the image to /refs, open it on GitHub, click “Raw”, copy that URL, and use it as --imageUrl.');
+  } else {
+    console.error('✖ Missing image: use --imageUrl "<public URL>"');
+  }
+  process.exit(1);
+}
 
-const imgBuf = fs.readFileSync(absImage);
-// try to guess mime from extension
-const ext = path.extname(absImage).toLowerCase();
-const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-const imageDataUrl = `data:${mime};base64,${imgBuf.toString('base64')}`;
+// ---------- 1) Create task (JSON with image_url) ----------
+console.log(`▶ Creating Meshy task from URL: ${imageUrl}`);
+console.log(`   POST ${CREATE_URL}`);
 
 try {
   const createPayload = {
-    // Common fields (adapt to your account docs if needed):
     prompt,
-    image: imageDataUrl,
-    // Optional quality parameters, uncomment/tune if your API supports them:
-    // target_polycount: 'mid',   // 'low' | 'mid' | 'high'
-    // texture: 'pbr',            // 'pbr' | 'normal' | etc.
+    image_url: imageUrl
+    // Add extra fields your account supports here if needed
   };
 
   const createRes = await httpJson(CREATE_URL, {
