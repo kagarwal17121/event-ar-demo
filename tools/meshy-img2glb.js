@@ -1,205 +1,223 @@
 // tools/meshy-img2glb.js
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import 'dotenv/config';
+// Node 18+ (uses global fetch). Robust to different Meshy response shapes.
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const { argv } = require('process');
 
-// ---------- Args ----------
-const argv = process.argv.slice(2);
-const flag = (k) => {
-  const i = argv.indexOf(`--${k}`);
-  if (i === -1) return null;
-  const v = argv[i + 1];
-  if (!v || v.startsWith('--')) return true;
-  return v;
-};
-
-const imageLocal = flag('image');           // local path (NOT accepted by your Meshy account)
-const imageUrl   = flag('imageUrl');        // public URL (REQUIRED for your Meshy account)
-const name       = flag('name')      || 'New Model';
-const category   = flag('category')  || 'Unsorted';
-const prompt     = flag('prompt')    || 'High-quality event decor asset, clean geometry, PBR, real scale';
-const thumbFromPreview = !!flag('thumbFromPreview');
-
-// ---------- Config ----------
 const API_KEY = process.env.MESHY_API_KEY;
+const BASE = (process.env.MESHY_BASE_URL || 'https://api.meshy.ai/v1').replace(/\/+$/,'');
 if (!API_KEY) {
   console.error('✖ Missing MESHY_API_KEY in .env');
   process.exit(1);
 }
 
-// If your account needs it, set MESHY_BASE_URL in .env to:
-//   https://api.meshy.ai/openapi/v1
-const BASE_URL = (process.env.MESHY_BASE_URL || 'https://api.meshy.ai/v1').replace(/\/+$/, '');
-const CREATE_URL = `${BASE_URL}/image-to-3d`;
-const TASK_URL   = (id) => `${BASE_URL}/tasks/${id}`;
-
-// ---------- FS setup ----------
-const MODELS_DIR = path.resolve(process.cwd(), 'models');
-const THUMBS_DIR = path.resolve(MODELS_DIR, 'thumbs');
-fs.mkdirSync(MODELS_DIR, { recursive: true });
-fs.mkdirSync(THUMBS_DIR, { recursive: true });
-
-// ---------- HTTP helpers ----------
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function httpJson(url, opts = {}) {
-  const res = await fetch(url, opts);
-  const text = await res.text();
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-  if (!res.ok) {
-    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
-    err.status = res.status; err.body = body;
-    throw err;
-  }
-  return body;
+// ---- tiny arg parser (no deps) ----
+function parseArg(name) {
+  const i = argv.indexOf(`--${name}`);
+  if (i !== -1 && i+1 < argv.length && !argv[i+1].startsWith('--')) return argv[i+1];
+  return argv.includes(`--${name}`) ? true : undefined;
 }
 
-async function httpBuffer(url, opts = {}) {
-  const res = await fetch(url, opts);
-  if (!res.ok) {
-    const text = await res.text().catch(()=>'');
-    const err = new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-    err.status = res.status;
-    throw err;
-  }
-  return Buffer.from(await res.arrayBuffer());
-}
+const imagePath    = parseArg('image');         // local file (NOT used with Meshy: needs URL)
+const imageUrl     = parseArg('imageUrl');      // public URL (recommended)
+const name         = parseArg('name') || 'New Model';
+const category     = parseArg('category') || 'Uncategorized';
+const prompt       = parseArg('prompt') || '';
+const thumbFromPrev= !!parseArg('thumbFromPreview');
 
-// ---------- Validate input ----------
-if (!imageUrl) {
-  // You passed a local file (or nothing). Your Meshy account requires a public URL.
-  if (imageLocal) {
-    console.error('✖ Your Meshy endpoint requires a public image URL.\n' +
-      '  Please upload your image somewhere public (e.g. GitHub “raw”, Cloudinary, S3) and run with:\n' +
-      '    --imageUrl "https://example.com/your.jpg"\n' +
-      '  Tip (GitHub): commit the image to /refs, open it on GitHub, click “Raw”, copy that URL, and use it as --imageUrl.');
-  } else {
-    console.error('✖ Missing image: use --imageUrl "<public URL>"');
-  }
+if (!imageUrl && !imagePath) {
+  console.error('✖ Provide --imageUrl <public URL> (Meshy requires a URL).');
   process.exit(1);
 }
 
-// ---------- 1) Create task (JSON with image_url) ----------
-console.log(`▶ Creating Meshy task from URL: ${imageUrl}`);
-console.log(`   POST ${CREATE_URL}`);
+const modelsDir   = path.resolve('models');
+const thumbsDir   = path.join(modelsDir, 'thumbs');
+const jsonPath    = path.join(modelsDir, 'models.json');
 
-try {
-  const createPayload = {
+// ensure dirs
+fs.mkdirSync(modelsDir, { recursive: true });
+fs.mkdirSync(thumbsDir, { recursive: true });
+
+// slug
+const slug = name.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'');
+const outGLB   = path.join(modelsDir, `${slug}.glb`);
+const outThumb = path.join(thumbsDir, `${slug}.jpg`);
+
+function setStatus(...m){ console.log(...m); }
+
+async function createTask() {
+  const url = `${BASE}/image-to-3d`;
+  const body = {
+    image_url: imageUrl,
     prompt,
-    image_url: imageUrl
-    // Add extra fields your account supports here if needed
+    // Tweak defaults below to your taste:
+    topology: 'mid',
+    target_polycount: 300_000,
+    texture_size: 2048
   };
 
-  const createRes = await httpJson(CREATE_URL, {
+  setStatus('▶ Creating Meshy task from URL:', imageUrl);
+  setStatus('   POST', url);
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(createPayload)
+    body: JSON.stringify(body)
   });
 
-  const taskId = createRes.task_id || createRes.id;
-  if (!taskId) {
-    console.error('✖ Create task did not return task id:', createRes);
-    process.exit(1);
+  const data = await res.json().catch(()=> ({}));
+  if (!res.ok) {
+    console.error('✖ Create task failed:', res.status, data);
+    throw new Error('Create task failed');
   }
-  console.log(`   ✔ Task created: ${taskId}`);
 
-  // ---------- 2) Poll until ready ----------
-  console.log('▶ Polling task status…');
-  let status = 'PENDING', result = null;
-  const started = Date.now();
-  const timeoutMs = 10 * 60 * 1000;
+  // Meshy variants seen in the wild:
+  // { task_id: "..." }  OR  { result: "..." }  OR  { id: "..." }
+  const taskId = data.task_id || data.result || data.id;
+  if (!taskId || typeof taskId !== 'string') {
+    console.error('✖ Create task did not return task id:', data);
+    throw new Error('No task id');
+  }
+  return taskId;
+}
 
-  while (Date.now() - started < timeoutMs) {
-    await sleep(5000);
-    const t = await httpJson(TASK_URL(taskId), {
-      headers: { Authorization: `Bearer ${API_KEY}` }
+async function pollTask(taskId) {
+  const url = `${BASE}/tasks/${encodeURIComponent(taskId)}`;
+  setStatus('⏳ Task:', taskId);
+  setStatus('   GET', url);
+
+  let lastStatus = '';
+  for (;;) {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${API_KEY}` }
     });
-    status = (t.status || t.state || '').toUpperCase();
-    const out = t.result || t.output || t.data || t;
+    const data = await res.json().catch(()=> ({}));
 
-    if (status === 'SUCCEEDED' || status === 'COMPLETED' || out?.model_url) {
-      result = out;
-      break;
+    if (!res.ok) {
+      console.error('✖ Poll failed:', res.status, data);
+      throw new Error('Poll failed');
     }
-    if (status === 'FAILED' || status === 'ERROR') {
-      console.error('✖ Task failed:', t);
+
+    const status = (data.status || data.state || '').toUpperCase();
+    if (status && status !== lastStatus) {
+      setStatus('   Status:', status);
+      lastStatus = status;
+    }
+
+    if (status === 'SUCCEEDED' || status === 'COMPLETED' || status === 'FINISHED') {
+      return data;
+    }
+    if (status === 'FAILED' || status === 'CANCELED' || status === 'ERROR') {
+      console.error('✖ Task failed:', data);
+      throw new Error('Task failed');
+    }
+
+    await new Promise(r=> setTimeout(r, 5000));
+  }
+}
+
+// Try to extract GLB URL and preview from multiple possible shapes
+function extractUrls(taskData) {
+  // candidates for model url
+  const candidates = [
+    taskData?.result?.model_url,
+    taskData?.result?.glb_url,
+    taskData?.result?.download_url,
+    taskData?.output?.model_url,
+    taskData?.output?.glb_url,
+    taskData?.model_url,
+    taskData?.glb_url,
+    taskData?.download_url
+  ].filter(Boolean);
+
+  // candidates for preview
+  const previews = [
+    taskData?.result?.preview_image,
+    taskData?.result?.preview_url,
+    taskData?.output?.preview_image,
+    taskData?.output?.preview_url,
+    taskData?.preview_image,
+    taskData?.preview_url
+  ].filter(Boolean);
+
+  return { modelUrl: candidates[0], previewUrl: previews[0] };
+}
+
+async function downloadToFile(url, destPath) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed ${res.status}`);
+  const ab = await res.arrayBuffer();
+  fs.writeFileSync(destPath, Buffer.from(ab));
+}
+
+function readJSONSafe(p) {
+  if (!fs.existsSync(p)) return { categories: {} };
+  const raw = fs.readFileSync(p, 'utf8').trim();
+  // Guard against accidental BOM
+  const clean = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+  return JSON.parse(clean || '{"categories":{}}');
+}
+
+function writeJSONPretty(p, obj) {
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
+}
+
+(async () => {
+  try {
+    const taskId = await createTask();
+    const taskData = await pollTask(taskId);
+
+    const { modelUrl, previewUrl } = extractUrls(taskData);
+    if (!modelUrl) {
+      console.error('✖ Could not find model URL in task result. Full payload:\n', JSON.stringify(taskData, null, 2));
       process.exit(1);
     }
-    process.stdout.write('.');
-  }
-  console.log('');
 
-  if (!result?.model_url) {
-    console.error('✖ No model_url in task result. Raw:', result);
+    // Save GLB
+    await downloadToFile(modelUrl, outGLB);
+    setStatus('✔ Saved GLB ->', path.relative(process.cwd(), outGLB));
+
+    // Optional preview -> thumbnail
+    if (thumbFromPrev && previewUrl) {
+      await downloadToFile(previewUrl, outThumb);
+      setStatus('✔ Saved preview ->', path.relative(process.cwd(), outThumb));
+    }
+
+    // Update catalog
+    const relGLB   = `./models/${path.basename(outGLB)}`;
+    const relThumb = fs.existsSync(outThumb) ? `./models/thumbs/${path.basename(outThumb)}` : undefined;
+
+    const catalog = readJSONSafe(jsonPath);
+    catalog.categories ||= {};
+    catalog.categories[category] ||= [];
+
+    // Avoid dup by name
+    const exists = catalog.categories[category].some(m => (m.name||'').toLowerCase() === name.toLowerCase());
+    if (!exists) {
+      const entry = {
+        name,
+        url: relGLB,
+        scale: 1,
+        rotation: [0,0,0],
+        position: [0,0,0],
+        shadow: true
+      };
+      if (relThumb) entry.thumbnail = relThumb;
+      catalog.categories[category].push(entry);
+      writeJSONPretty(jsonPath, catalog);
+      setStatus('✔ Updated catalog:', path.relative(process.cwd(), jsonPath));
+    } else {
+      setStatus('ℹ︎ Catalog already had an entry named:', name);
+    }
+
+    setStatus('\n✅ Done. Add it from category:', category);
+  } catch (err) {
+    console.error('\n✖ Error:', err.message);
     process.exit(1);
   }
-
-  // ---------- 3) Download GLB (+ optional preview) ----------
-  const safeName = name.replace(/[^\w\-]+/g, '_');
-  const glbOut = path.join(MODELS_DIR, `${safeName}.glb`);
-  console.log(`▶ Downloading GLB -> ${glbOut}`);
-  const glbBuf = await httpBuffer(result.model_url, { headers: { Authorization: `Bearer ${API_KEY}` } });
-  fs.writeFileSync(glbOut, glbBuf);
-
-  let thumbRel = null;
-  const previewUrl = result.preview_url || result.thumbnail_url || result.image_url;
-  if (thumbFromPreview && previewUrl) {
-    const jpgOut = path.join(THUMBS_DIR, `${safeName}.jpg`);
-    console.log(`▶ Downloading preview -> ${jpgOut}`);
-    const jpgBuf = await httpBuffer(previewUrl, { headers: { Authorization: `Bearer ${API_KEY}` } });
-    fs.writeFileSync(jpgOut, jpgBuf);
-    thumbRel = `./models/thumbs/${safeName}.jpg`;
-  }
-
-  // ---------- 4) Update catalog ----------
-  const catalogPath = path.join(MODELS_DIR, 'models.json');
-  let catalog = { categories: {} };
-  if (fs.existsSync(catalogPath)) {
-    try { catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); }
-    catch { console.warn('! models.json existed but failed to parse. Recreating…'); }
-  }
-  catalog.categories ||= {};
-  catalog.categories[category] ||= [];
-
-  const entry = {
-    name,
-    url: `./models/${safeName}.glb`,
-    scale: 1,
-    rotation: [0,0,0],
-    position: [0,0,0],
-    shadow: true
-  };
-  if (thumbRel) entry.thumbnail = thumbRel;
-
-  const arr = catalog.categories[category];
-  const ix = arr.findIndex(x => x.name === name);
-  if (ix >= 0) arr[ix] = entry; else arr.push(entry);
-
-  fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
-  console.log('✔ Catalog updated:', catalogPath);
-
-  console.log('\n✅ Done.');
-  console.log(`   Model: ${entry.url}`);
-  if (thumbRel) console.log(`   Thumb: ${thumbRel}`);
-  console.log(`   Category: ${category}`);
-} catch (err) {
-  if (err.body) {
-    console.error(`✖ Create task failed: ${err.status}`, err.body);
-  } else {
-    console.error('✖ Error:', err.message);
-  }
-  console.error('\nTroubleshooting:');
-  console.error('  • If you still see 404/NoMatchingRoute, set MESHY_BASE_URL=https://api.meshy.ai/openapi/v1 in .env');
-  console.error('  • The script currently calls:');
-  console.error('      CREATE_URL =', CREATE_URL);
-  console.error('      TASK_URL   =', `${BASE_URL}/tasks/{id}`);
-  process.exit(1);
-}
+})();
