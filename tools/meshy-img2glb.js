@@ -1,224 +1,208 @@
-#!/usr/bin/env node
-/**
- * tools/meshy-img2glb.js
- * Image -> 3D (GLB) via Meshy API, then write into models/ and models/models.json
- *
- * Usage:
- *   node tools/meshy-img2glb.js --image ".\refs\chair.jpg" --name "Chair v1" --category "Furniture" [--prompt "extra prompt"] [--thumbFromPreview]
- *
- * Notes:
- * - Adjust ENDPOINT_CREATE / ENDPOINT_STATUS if your Meshy plan exposes different paths.
- * - The script is defensive and prints the raw responses if something is unexpected.
- */
-
-import 'dotenv/config';
+// tools/meshy-img2glb.js
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import FormData from 'form-data';
+import 'dotenv/config';
 
-// ---------- CONFIG: tweak if your account uses different endpoints ----------
-const ENDPOINT_CREATE = 'https://api.meshy.ai/v2/image-to-3d';        // POST create task
-const ENDPOINT_STATUS = (taskId) => `https://api.meshy.ai/v2/tasks/${taskId}`; // GET task status
-
-// ----------------------------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ROOT     = path.resolve(__dirname, '..');
-const MODELS   = path.resolve(ROOT, '../models');
-const THUMBS   = path.resolve(MODELS, 'thumbs');
-const CATALOG  = path.resolve(MODELS, 'models.json');
+// ---------- Args ----------
+const argv = process.argv.slice(2);
+const flag = (k) => {
+  const i = argv.indexOf(`--${k}`);
+  if (i === -1) return null;
+  const v = argv[i + 1];
+  if (!v || v.startsWith('--')) return true;
+  return v;
+};
 
-const API_KEY  = process.env.MESHY_API_KEY;
+const imagePath = flag('image'); // required
+const name = flag('name') || 'New Model';
+const category = flag('category') || 'Unsorted';
+const prompt = flag('prompt') || 'High-quality event decor asset, clean geometry, PBR materials, real-world scale';
+const thumbFromPreview = !!flag('thumbFromPreview');
+
+// ---------- Config ----------
+const API_KEY = process.env.MESHY_API_KEY;
 if (!API_KEY) {
   console.error('✖ Missing MESHY_API_KEY in .env');
   process.exit(1);
 }
 
-function argOf(name, def=null) {
-  const i = process.argv.findIndex(a => a === `--${name}`);
-  if (i>=0 && process.argv[i+1]) return process.argv[i+1];
-  return def;
+// If your account needs it, set MESHY_BASE_URL in .env to:
+//   https://api.meshy.ai/openapi/v1
+const BASE_URL = (process.env.MESHY_BASE_URL || 'https://api.meshy.ai/v1').replace(/\/+$/, '');
+const CREATE_URL = `${BASE_URL}/image-to-3d`;
+const TASK_URL = (id) => `${BASE_URL}/tasks/${id}`;
+
+// ---------- FS setup ----------
+if (!imagePath) {
+  console.error('✖ Missing --image <path>');
+  process.exit(1);
+}
+const absImage = path.resolve(process.cwd(), imagePath.replace(/^["']|["']$/g, ''));
+if (!fs.existsSync(absImage)) {
+  console.error(`✖ Image not found: ${absImage}`);
+  process.exit(1);
 }
 
-function boolFlag(name) {
-  return process.argv.includes(`--${name}`);
+const MODELS_DIR = path.resolve(process.cwd(), 'models');
+const THUMBS_DIR = path.resolve(MODELS_DIR, 'thumbs');
+fs.mkdirSync(MODELS_DIR, { recursive: true });
+fs.mkdirSync(THUMBS_DIR, { recursive: true });
+
+// ---------- HTTP helpers ----------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function httpJson(url, opts = {}) {
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+    err.status = res.status; err.body = body;
+    throw err;
+  }
+  return body;
+}
+async function httpBuffer(url, opts = {}) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(()=>'');
+    const err = new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
+    err.status = res.status;
+    throw err;
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
 
-function sanitizeFileBase(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80) || 'model';
-}
+// ---------- 1) Create task (JSON + base64 image) ----------
+console.log(`▶ Creating Meshy task from: ${imagePath}`);
+console.log(`   POST ${CREATE_URL}`);
 
-function readJsonNoBOM(file) {
-  let txt = fs.existsSync(file) ? fs.readFileSync(file,'utf8') : '';
-  if (txt && txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
-  return txt ? JSON.parse(txt) : { categories:{} };
-}
+const imgBuf = fs.readFileSync(absImage);
+// try to guess mime from extension
+const ext = path.extname(absImage).toLowerCase();
+const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+const imageDataUrl = `data:${mime};base64,${imgBuf.toString('base64')}`;
 
-function writeJsonPretty(file, obj) {
-  const txt = JSON.stringify(obj, null, 2);
-  fs.writeFileSync(file, txt, { encoding:'utf8' });
-}
+try {
+  const createPayload = {
+    // Common fields (adapt to your account docs if needed):
+    prompt,
+    image: imageDataUrl,
+    // Optional quality parameters, uncomment/tune if your API supports them:
+    // target_polycount: 'mid',   // 'low' | 'mid' | 'high'
+    // texture: 'pbr',            // 'pbr' | 'normal' | etc.
+  };
 
-async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-async function createTask(imagePath, prompt) {
-  const form = new FormData();
-  // attach image
-  form.append('image', fs.createReadStream(imagePath)); // content-type auto set by form-data
-  // optional prompt
-  if (prompt) form.append('prompt', prompt);
-  // You can add more params if your plan supports them, e.g.:
-  // form.append('output_format', 'glb');
-  // form.append('texture_size', '2048');
-
-  const res = await fetch(ENDPOINT_CREATE, {
+  const createRes = await httpJson(CREATE_URL, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${API_KEY}` },
-    body: form
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(createPayload)
   });
 
-  const body = await res.json().catch(()=> ({}));
-  if (!res.ok) {
-    console.error('✖ Create task failed:', res.status, body);
-    throw new Error('Create task failed');
-  }
-
-  // Try common shapes: { task_id } or { id } or { data: { task_id } }
-  const taskId = body.task_id || body.id || body?.data?.task_id || body?.data?.id;
+  const taskId = createRes.task_id || createRes.id;
   if (!taskId) {
-    console.error('✖ Could not find task id in response:', body);
-    throw new Error('Missing task id in response');
+    console.error('✖ Create task did not return task id:', createRes);
+    process.exit(1);
   }
-  return taskId;
-}
+  console.log(`   ✔ Task created: ${taskId}`);
 
-async function pollTask(taskId) {
+  // ---------- 2) Poll until ready ----------
+  console.log('▶ Polling task status…');
+  let status = 'PENDING', result = null;
   const started = Date.now();
-  const timeoutMs = 25 * 60 * 1000; // 25 minutes (adjust as needed)
+  const timeoutMs = 10 * 60 * 1000;
 
-  while (true) {
-    if (Date.now()-started > timeoutMs) throw new Error('Timed out waiting for Meshy task');
-
-    const res = await fetch(ENDPOINT_STATUS(taskId), {
-      headers: { 'Authorization': `Bearer ${API_KEY}` }
+  while (Date.now() - started < timeoutMs) {
+    await sleep(5000);
+    const t = await httpJson(TASK_URL(taskId), {
+      headers: { Authorization: `Bearer ${API_KEY}` }
     });
-    const body = await res.json().catch(()=> ({}));
+    status = (t.status || t.state || '').toUpperCase();
+    const out = t.result || t.output || t.data || t;
 
-    // Debug prints so you can see the actual schema once
-    // console.log('DEBUG status:', JSON.stringify(body, null, 2));
-
-    // Heuristic field picking — adjust these lines if your responses use different field names
-    const status  = body.status || body.state || body?.data?.status || body?.data?.state;
-    const prog    = body.progress ?? body?.data?.progress;
-    const err     = body.error    || body?.data?.error;
-
-    if (err) throw new Error(`Task error: ${err}`);
-
-    if (status && ['succeeded','finished','completed','SUCCESS','SUCCEEDED','DONE'].includes(String(status).toUpperCase())) {
-      // Try to find model URL & preview URL in common places:
-      const modelUrl   =
-        body.model_url   || body.glb_url   || body.result_url ||
-        body?.data?.model_url || body?.data?.glb_url || body?.data?.result_url;
-
-      const previewUrl =
-        body.preview_url || body.image_url  || body.thumbnail_url ||
-        body?.data?.preview_url || body?.data?.image_url || body?.data?.thumbnail_url;
-
-      if (!modelUrl) {
-        console.error('✖ No GLB/model URL in success response:', body);
-        throw new Error('No model URL found');
-      }
-      return { modelUrl, previewUrl };
+    if (status === 'SUCCEEDED' || status === 'COMPLETED' || out?.model_url) {
+      result = out;
+      break;
     }
-
-    // Not done yet
-    process.stdout.write(`… status: ${status||'unknown'}${prog!=null?` (${prog}%)`:''}\r`);
-    await sleep(6000);
+    if (status === 'FAILED' || status === 'ERROR') {
+      console.error('✖ Task failed:', t);
+      process.exit(1);
+    }
+    process.stdout.write('.');
   }
-}
+  console.log('');
 
-async function download(url, dest) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(dest, buf);
-}
-
-async function main() {
-  const image   = argOf('image');
-  const name    = argOf('name', 'New Model');
-  const category= argOf('category', 'Unsorted');
-  const prompt  = argOf('prompt', '');
-  const thumbFromPreview = boolFlag('thumbFromPreview');
-
-  if (!image) {
-    console.log('Usage: node tools/meshy-img2glb.js --image "<path>" --name "Name" --category "Category" [--prompt "text"] [--thumbFromPreview]');
+  if (!result?.model_url) {
+    console.error('✖ No model_url in task result. Raw:', result);
     process.exit(1);
   }
-  if (!fs.existsSync(image)) {
-    console.error(`✖ Image not found: ${path.resolve(image)}`);
-    process.exit(1);
-  }
-  fs.mkdirSync(MODELS, { recursive:true });
-  fs.mkdirSync(THUMBS, { recursive:true });
 
-  console.log(`▶ Creating Meshy task from: ${image}`);
-  const taskId = await createTask(image, prompt);
-  console.log(`✔ Task created: ${taskId}`);
-
-  console.log('▶ Waiting for completion…');
-  const { modelUrl, previewUrl } = await pollTask(taskId);
-  console.log('\n✔ Task done');
-  console.log('   modelUrl  :', modelUrl);
-  if (previewUrl) console.log('   previewUrl:', previewUrl);
-
-  const fileBase = sanitizeFileBase(name);
-  const glbOut   = path.join(MODELS, `${fileBase}.glb`);
-  const thumbOut = path.join(THUMBS, `${fileBase}.jpg`);
-
-  console.log(`▶ Downloading GLB → ${glbOut}`);
-  await download(modelUrl, glbOut);
+  // ---------- 3) Download GLB (+ optional preview) ----------
+  const safeName = name.replace(/[^\w\-]+/g, '_');
+  const glbOut = path.join(MODELS_DIR, `${safeName}.glb`);
+  console.log(`▶ Downloading GLB -> ${glbOut}`);
+  const glbBuf = await httpBuffer(result.model_url, { headers: { Authorization: `Bearer ${API_KEY}` } });
+  fs.writeFileSync(glbOut, glbBuf);
 
   let thumbRel = null;
+  const previewUrl = result.preview_url || result.thumbnail_url || result.image_url;
   if (thumbFromPreview && previewUrl) {
-    console.log(`▶ Downloading preview → ${thumbOut}`);
-    try {
-      await download(previewUrl, thumbOut);
-      thumbRel = `./models/thumbs/${fileBase}.jpg`;
-    } catch {
-      console.warn('! Failed to download preview image — continuing without thumbnail.');
-    }
+    const jpgOut = path.join(THUMBS_DIR, `${safeName}.jpg`);
+    console.log(`▶ Downloading preview -> ${jpgOut}`);
+    const jpgBuf = await httpBuffer(previewUrl, { headers: { Authorization: `Bearer ${API_KEY}` } });
+    fs.writeFileSync(jpgOut, jpgBuf);
+    thumbRel = `./models/thumbs/${safeName}.jpg`;
   }
 
-  // Update catalog
-  const relGlb = `./models/${fileBase}.glb`;
+  // ---------- 4) Update catalog ----------
+  const catalogPath = path.join(MODELS_DIR, 'models.json');
+  let catalog = { categories: {} };
+  if (fs.existsSync(catalogPath)) {
+    try { catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); }
+    catch { console.warn('! models.json existed but failed to parse. Recreating…'); }
+  }
+  catalog.categories ||= {};
+  catalog.categories[category] ||= [];
+
   const entry = {
     name,
-    url: relGlb,
-    thumbnail: thumbRel || undefined,
+    url: `./models/${safeName}.glb`,
     scale: 1,
     rotation: [0,0,0],
     position: [0,0,0],
     shadow: true
   };
+  if (thumbRel) entry.thumbnail = thumbRel;
 
-  const json = readJsonNoBOM(CATALOG);
-  if (!json.categories) json.categories = {};
-  if (!json.categories[category]) json.categories[category] = [];
-  json.categories[category].push(entry);
-  writeJsonPretty(CATALOG, json);
+  const arr = catalog.categories[category];
+  const ix = arr.findIndex(x => x.name === name);
+  if (ix >= 0) arr[ix] = entry; else arr.push(entry);
 
-  console.log('\n✓ Added to catalog:');
-  console.log(`  - name    : ${name}`);
-  console.log(`  - category: ${category}`);
-  console.log(`  - url     : ${relGlb}`);
-  if (thumbRel) console.log(`  - thumb   : ${thumbRel}`);
-  console.log(`\nUpdated: ${path.relative(process.cwd(), CATALOG)}`);
-}
+  fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+  console.log('✔ Catalog updated:', catalogPath);
 
-main().catch(err=>{
-  console.error('\n✖ Error:', err?.message || err);
+  console.log('\n✅ Done.');
+  console.log(`   Model: ${entry.url}`);
+  if (thumbRel) console.log(`   Thumb: ${thumbRel}`);
+  console.log(`   Category: ${category}`);
+} catch (err) {
+  if (err.body) {
+    console.error(`✖ Create task failed: ${err.status}`, err.body);
+  } else {
+    console.error('✖ Error:', err.message);
+  }
+  console.error('\nTroubleshooting:');
+  console.error('  • If you still see 404/NoMatchingRoute, set MESHY_BASE_URL=https://api.meshy.ai/openapi/v1 in .env');
+  console.error('  • The script currently calls:');
+  console.error('      CREATE_URL =', CREATE_URL);
+  console.error('      TASK_URL   =', `${BASE_URL}/tasks/{id}`);
   process.exit(1);
-});
+}
