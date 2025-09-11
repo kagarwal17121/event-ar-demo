@@ -208,6 +208,22 @@
           0
         ],
         "shadow": true
+      },
+      {
+        "name": "Chair v1",
+        "url": "./models/chair-v1.glb",
+        "scale": 1,
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "shadow": true
       }
     ]
   }
