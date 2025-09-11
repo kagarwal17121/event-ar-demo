@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>The New Innings Planner — Manage Models</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0b10; --panel:#12141a; --muted:#8e96a3; --brand:#2b6cff; --border:#232634; }
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:#e9edf3;font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; overflow:auto}
+  header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(0,0,0,.6),rgba(0,0,0,0)); padding:10px 14px}
+  .brand{display:flex;gap:10px;align-items:center}
+  .brand img{width:34px;height:34px;border-radius:8px;object-fit:cover}
+  .brand h1{margin:0;font-size:18px}
+  main{padding:12px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px; padding:12px}
+  .grid{display:grid;gap:12px}
+  .grid.cols-2{grid-template-columns:1fr; }
+  @media(min-width:700px){ .grid.cols-2{grid-template-columns:1fr 1fr;} }
+  label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+  input,select,button,textarea{height:42px;box-sizing:border-box;border-radius:10px;border:1px solid var(--border);background:#0f1117;color:#fff;padding:0 12px}
+  textarea{height:84px; padding:10px 12px; resize:vertical}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .full{width:100%}
+  button.primary{background:var(--brand);border-color:var(--brand)}
+  button.ghost{background:#10131a}
+  .pill{font-size:12px;border:1px solid var(--border);padding:6px 10px;border-radius:999px;background:#0f1219;color:#cfd6e4}
+  .muted{color:var(--muted)}
+  .thumb{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;border:1px solid var(--border);background:#0c0f14}
+  .cats{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 8px}
+  .cat-btn{padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#0f1219;color:#cfd6e4;font-size:13px}
+  .cat-btn.on{background:#1a2233;border-color:#2b3a55}
+  .models{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:600px){ .models{grid-template-columns:repeat(3,1fr);} }
+  @media(min-width:900px){ .models{grid-template-columns:repeat(4,1fr);} }
+  .model-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0e1218}
+  .model-card .meta{padding:8px 10px}
+  .model-card .name{font-size:13px}
+  .viewer{width:100%;height:320px;border-radius:12px;border:1px solid var(--border);background:#0a0d12;overflow:hidden}
+  .status{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c7ced8;background:#0e1016;border:1px dashed #2a3142;border-radius:10px;padding:10px;white-space:pre-wrap}
+  .row.tight > *{height:36px}
+  .copy{cursor:pointer}
+</style>
+
+<!-- Local import map for Three.js -->
+<script type="importmap">
+{
+  "imports":{
+    "three":"./lib/three/build/three.module.js",
+    "three/addons/":"./lib/three/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="./logo.png" alt="The New Innings Planner" onerror="this.style.visibility='hidden'"/>
+    <h1>The New Innings Planner — Manage Models</h1>
+    <span class="pill">local admin helper</span>
+  </div>
+</header>
+
+<main class="grid cols-2">
+
+  <!-- LEFT: Catalog browser -->
+  <section class="card">
+    <h2 style="margin:0 0 8px 0;font-size:16px;">Catalog</h2>
+    <div class="row">
+      <div class="full">
+        <label>Category</label>
+        <div class="cats" id="catBar"></div>
+      </div>
+      <div class="full">
+        <div class="models" id="modelGrid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: 3D viewer + Add helper -->
+  <section class="card">
+    <h2 style="margin:0 0 8px 0;font-size:16px;">Preview & Add via API</h2>
+
+    <div class="viewer" id="viewer">
+      <!-- canvas injected -->
+    </div>
+    <div class="row" style="margin:10px 0 16px 0;">
+      <span class="muted" id="selInfo">Select a model card to preview</span>
+    </div>
+
+    <div class="row">
+      <div class="full">
+        <label>Source image (choose one)</label>
+        <select id="modeSel" class="full">
+          <option value="url">Public Image URL (recommended)</option>
+          <option value="local">Local file path (on your PC, for CLI)</option>
+        </select>
+      </div>
+
+      <div class="full" id="urlBox">
+        <input class="full" id="imageUrl" placeholder="https://example.com/your-image.jpg"/>
+      </div>
+
+      <div class="full" id="localBox" style="display:none">
+        <input class="full" id="imageLocal" placeholder=".\\refs\\your-image.jpg (Windows path for CLI)"/>
+      </div>
+
+      <div class="full">
+        <label>Name</label>
+        <input class="full" id="name" placeholder="Chair v1"/>
+      </div>
+
+      <div class="full">
+        <label>Category</label>
+        <input class="full" id="category" placeholder="Furniture"/>
+      </div>
+
+      <div class="full">
+        <label>Prompt (optional but helpful)</label>
+        <textarea id="prompt" placeholder="Event decor chair, real-world scale, clean geometry"></textarea>
+      </div>
+
+      <div class="row full">
+        <div style="flex:1">
+          <label>Poly budget / mode</label>
+          <select id="poly" class="full">
+            <option value="adaptive" selected>adaptive (let Meshy decide)</option>
+            <option value="10000">10k</option>
+            <option value="50000">50k</option>
+            <option value="100000">100k</option>
+            <option value="200000">200k</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label>Topology</label>
+          <select id="topology" class="full">
+            <option value="tri">tri</option>
+            <option value="quad" selected>quad</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row tight full">
+        <label class="pill"><input type="checkbox" id="texture" checked> texture</label>
+        <label class="pill"><input type="checkbox" id="pbr" checked> PBR</label>
+        <select id="texSize">
+          <option value="1024">1024</option>
+          <option value="2048" selected>2048</option>
+          <option value="4096">4096</option>
+        </select>
+        <label class="pill"><input type="checkbox" id="thumbFromPreview" checked> thumbnail from preview</label>
+      </div>
+
+      <div class="row full" style="margin-top:8px">
+        <button class="primary" id="btnMake">Generate CLI command</button>
+        <button class="ghost" id="btnCopy">Copy</button>
+      </div>
+
+      <div class="full">
+        <label>Command</label>
+        <pre class="status" id="cmdBox"># Click “Generate CLI command”</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- FULL WIDTH: status/help -->
+  <section class="card full" style="grid-column:1/-1">
+    <h2 style="margin:0 0 8px 0;font-size:16px;">Tips</h2>
+    <ul style="margin:6px 0 0 18px; color:#c7ced8">
+      <li>This page is static (safe). It never sends your API key. Use the generated command in your terminal.</li>
+      <li>After the CLI completes, it saves the <code>.glb</code> into <code>models/</code> and appends to <code>models/models.json</code>.</li>
+      <li>Commit & push to GitHub to make it live on Pages:
+        <pre class="status">git add -A
+git commit -m "Add model via Meshy"
+git pull --rebase origin main
+git push origin main</pre>
+      </li>
+    </ul>
+  </section>
+
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+const catBar = document.getElementById('catBar');
+const modelGrid = document.getElementById('modelGrid');
+const selInfo = document.getElementById('selInfo');
+
+// --- Viewer setup ---
+const viewer = document.getElementById('viewer');
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
+renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+viewer.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = null;
+const camera = new THREE.PerspectiveCamera(60, viewer.clientWidth/viewer.clientHeight, 0.01, 100);
+camera.position.set(0.5, 0.4, 0.9);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 1.0);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+dir.position.set(1.5, 2, 1.5);
+scene.add(dir);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+const grid = new THREE.GridHelper(4, 8, 0x2b2f3a, 0x1e2533); grid.position.y = -0.001; scene.add(grid);
+let current = null;
+
+const draco = new DRACOLoader();
+draco.setDecoderPath('./lib/three/examples/jsm/libs/draco/');
+const gltf = new GLTFLoader();
+gltf.setDRACOLoader(draco);
+
+function fitToObject(obj){
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3()).length();
+  const center = box.getCenter(new THREE.Vector3());
+  controls.target.copy(center);
+  const dist = size * 0.8;
+  camera.position.copy(center).add(new THREE.Vector3(dist, dist*0.5, dist));
+  camera.near = size/100; camera.far = size*10; camera.updateProjectionMatrix();
+  controls.update();
+}
+
+function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); }
+animate();
+
+function clearCurrent(){ if(current){ scene.remove(current); current = null; } }
+
+// --- Catalog load & UI ---
+let catalog = { categories:{} };
+let activeCat = null;
+
+async function loadCatalog(){
+  try{
+    const r = await fetch('./models/models.json', { cache:'no-store' });
+    catalog = await r.json();
+    buildCats();
+    // auto-select first category
+    const list = Object.keys(catalog.categories||{});
+    if (list.length){ selectCat(list[0]); }
+  }catch(e){
+    modelGrid.innerHTML = '<div class="muted">Failed to load ./models/models.json</div>';
+  }
+}
+
+function buildCats(){
+  catBar.innerHTML = '';
+  const cats = Object.keys(catalog.categories||{});
+  if (!cats.length){
+    catBar.innerHTML = '<span class="muted">No categories</span>';
+    return;
+  }
+  cats.forEach(c=>{
+    const b=document.createElement('button'); b.className='cat-btn'; b.textContent=`${c} (${catalog.categories[c].length})`;
+    b.onclick=()=>selectCat(c);
+    catBar.appendChild(b);
+  });
+}
+
+function selectCat(c){
+  activeCat = c;
+  [...catBar.children].forEach(btn=>btn.classList.toggle('on', btn.textContent.startsWith(c+' ')));
+  const items = (catalog.categories[c]||[]);
+  modelGrid.innerHTML = '';
+  if (!items.length){
+    modelGrid.innerHTML = '<div class="muted">No models in this category.</div>';
+    return;
+  }
+  items.forEach(it=>{
+    const card = document.createElement('div'); card.className='model-card';
+    const img = document.createElement('img'); img.className='thumb'; img.src = it.thumbnail || '';
+    img.alt = it.name || it.url;
+    img.onerror = ()=>{ img.style.opacity=.2; img.alt='(no thumbnail)'; };
+    const meta = document.createElement('div'); meta.className='meta';
+    const name = document.createElement('div'); name.className='name'; name.textContent = it.name || '(unnamed)';
+    const path = document.createElement('div'); path.className='muted'; path.style.fontSize='11px'; path.textContent = it.url;
+    meta.appendChild(name); meta.appendChild(path);
+    card.appendChild(img); card.appendChild(meta);
+    card.onclick = ()=> preview(it);
+    modelGrid.appendChild(card);
+  });
+}
+
+async function preview(item){
+  selInfo.textContent = `Preview: ${item.name || item.url}`;
+  clearCurrent();
+  try{
+    const glb = await gltf.loadAsync(item.url);
+    current = glb.scene;
+    current.traverse(n=>{ if(n.isMesh){ n.castShadow=true; n.receiveShadow=true; } });
+    const s = item.scale ?? 1; current.scale.setScalar(s);
+    if (item.rotation) current.rotation.set(...item.rotation);
+    if (item.position) current.position.set(...item.position);
+    scene.add(current);
+    fitToObject(current);
+  }catch(e){
+    selInfo.textContent = `Preview failed: ${e.message}`;
+  }
+}
+
+// --- Command generator ---
+const modeSel = document.getElementById('modeSel');
+const urlBox = document.getElementById('urlBox');
+const localBox = document.getElementById('localBox');
+modeSel.onchange = ()=>{
+  const mode = modeSel.value;
+  urlBox.style.display = (mode==='url') ? '' : 'none';
+  localBox.style.display = (mode==='local') ? '' : 'none';
+};
+
+function val(id){ return document.getElementById(id).value.trim(); }
+function checked(id){ return document.getElementById(id).checked; }
+
+const cmdBox = document.getElementById('cmdBox');
+document.getElementById('btnMake').onclick = ()=>{
+  const mode = modeSel.value;
+  const name = val('name') || 'Model';
+  const cat  = val('category') || 'Unsorted';
+  const prompt = val('prompt');
+  const poly = val('poly');
+  const topology = val('topology');
+  const tex = checked('texture');
+  const pbr = checked('pbr');
+  const texSize = document.getElementById('texSize').value;
+  const thumbFromPreview = checked('thumbFromPreview');
+
+  const parts = ['npm run meshy:img2glb --'];
+
+  if (mode==='url'){
+    const url = val('imageUrl');
+    if (!url){ cmdBox.textContent = '# Please provide an Image URL'; return; }
+    parts.push(`--imageUrl "${url}"`);
+  }else{
+    const loc = val('imageLocal');
+    if (!loc){ cmdBox.textContent = '# Please provide a local file path'; return; }
+    parts.push(`--image "${loc}"`);
+  }
+
+  parts.push(`--name "${name}"`);
+  parts.push(`--category "${cat}"`);
+  if (prompt) parts.push(`--prompt "${prompt.replace(/"/g,'\\"')}"`);
+  // mesh settings
+  if (poly==='adaptive'){ parts.push(`--poly adaptive`); }
+  else { parts.push(`--target ${poly}`); }
+  parts.push(`--topology ${topology}`);
+  if (tex) parts.push(`--texture yes`);
+  if (pbr) parts.push(`--pbr yes`);
+  parts.push(`--textureSize ${texSize}`);
+  if (thumbFromPreview) parts.push(`--thumbFromPreview`);
+
+  cmdBox.textContent = parts.join(' ');
+};
+
+document.getElementById('btnCopy').onclick = async()=>{
+  try{
+    await navigator.clipboard.writeText(cmdBox.textContent);
+    const old = cmdBox.textContent;
+    cmdBox.textContent = old + "\n# copied ✔";
+    setTimeout(()=>{ cmdBox.textContent = old; }, 800);
+  }catch(e){
+    const a=document.createElement('a');
+    const blob=new Blob([cmdBox.textContent],{type:'text/plain'});
+    a.href=URL.createObjectURL(blob); a.download='meshy-command.txt'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }
+};
+
+// Resize viewer
+addEventListener('resize', ()=>{
+  const w = viewer.clientWidth, h = viewer.clientHeight;
+  renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+});
+
+loadCatalog();
+</script>
+</body>
+</html>
