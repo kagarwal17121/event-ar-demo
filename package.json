@@ -9,6 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "meshy:add": "node tools/meshy-add.js",
     "meshy:img2glb": "node tools/meshy-img2glb.cjs"
+    "rebuild:catalog": "node tools/rebuild-catalog.cjs"
   },
   "repository": {
     "type": "git",
@@ -23,3 +24,4 @@
     "dotenv": "^17.2.2"
   }
 }
+
