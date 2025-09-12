@@ -1,11 +1,12 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Manage Models</title>
 <style>
   :root{--bg:#0b0b0f;--fg:#eaeaf1;--card:#12131a;--line:#232633;--brand:#2563ff}
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,-apple-system,"Segoe UI",Roboto,Arial}
   .wrap{max-width:1080px;margin:36px auto;padding:0 16px}
   h1{margin:0 0 12px}
@@ -25,6 +26,7 @@
   .viewer-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:8px}
   .viewer-slug{font-weight:600}
   .hint{font-size:13px;opacity:.75}
+  .status{margin:8px 0 0;font-size:13px;opacity:.8}
 </style>
 
 <!-- model-viewer web component -->
@@ -34,7 +36,6 @@
   <h1>Manage Models</h1>
   <p class="muted">Click “Web View” to preview a model inline. Use the button below to add new models.</p>
 
-  <!-- Keep this button OUTSIDE the markers so it never gets overwritten -->
   <p>
     <a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank" rel="noopener">
       ➕ Add New Model
@@ -42,15 +43,14 @@
   </p>
 
   <div class="row">
-    <!-- Gallery (the workflow ONLY replaces the part between the markers) -->
+    <!-- Gallery -->
     <div class="card">
       <h2>Models</h2>
-<!-- MODELS-START -->
-<div class="grid">
-
-</div>
-<!-- MODELS-END -->
-      <p class="hint">This list is auto-generated from files in <code>/models</code>.</p>
+      <!-- MODELS-START -->
+      <div class="grid" id="grid"></div>
+      <!-- MODELS-END -->
+      <p class="hint">This list is built from <code>/models/models.json</code>.</p>
+      <div id="status" class="status"></div>
     </div>
 
     <!-- Inline Viewer -->
@@ -81,11 +81,37 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+  const statusEl = document.getElementById('status');
+  const grid = document.getElementById('grid');
+
+  const PLACEHOLDER =
+    'data:image/svg+xml;charset=utf-8,' +
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+      <rect width="100%" height="100%" fill="#151824"/>
+      <text x="50%" y="50%" fill="#67708a" font-size="32" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto">No thumbnail</text>
+    </svg>`);
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+
+  function fileNameFromUrl(u){
+    try { return decodeURIComponent(u.split('/').pop()); } catch { return u; }
+  }
+
+  function ensureThumb(item){
+    if (item.thumbnail) return item.thumbnail;
+    // Try to derive: ./models/thumbs/<basename>.jpg
+    try{
+      const url = new URL(item.url, location.href);
+      const base = url.pathname.split('/').pop().replace(/\.[^.]+$/,'');
+      return `./models/thumbs/${base}.jpg`;
+    }catch{ return PLACEHOLDER; }
+  }
+
   function loadModel(path, slug) {
     const mv = document.getElementById('mv');
     mv.src = path;
-    document.getElementById('viewerSlug').textContent = slug || path.split('/').pop();
+    document.getElementById('viewerSlug').textContent = slug || fileNameFromUrl(path);
     const openRaw = document.getElementById('openRaw');
     openRaw.href = path;
     openRaw.style.display = 'inline-block';
@@ -95,7 +121,73 @@
     history.replaceState({}, '', url);
   }
 
-  // Web View buttons (generated inside the markers) use data-model and data-slug
+  function render(items){
+    if (!items.length){
+      setStatus('No models found in catalog.');
+      return;
+    }
+    setStatus(`Loaded ${items.length} item(s).`);
+    grid.innerHTML = '';
+    for (const it of items){
+      const slug = it.name || fileNameFromUrl(it.url);
+      const thumb = ensureThumb(it);
+
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `
+        <img class="thumb" src="${thumb}" alt="" onerror="this.src='${PLACEHOLDER}'"/>
+        <div class="slug" title="${slug}">${slug}</div>
+        <div class="rowbtns">
+          <a href="#" class="primary" data-model="${it.url}" data-slug="${slug}">Web View</a>
+          <a href="${it.url}" target="_blank" rel="noopener">Raw GLB</a>
+        </div>
+        <div class="muted" style="margin-top:6px;font-size:12px">${it.category ? it.category : ''}</div>
+      `;
+      grid.appendChild(div);
+    }
+  }
+
+  async function loadCatalog(){
+    setStatus('Loading catalog…');
+    try{
+      // Bypass aggressive GH Pages caching
+      const res = await fetch('./models/models.json?cb=' + Date.now(), { cache:'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      // Support both shapes
+      let items = [];
+      if (Array.isArray(json)){
+        items = json;
+      } else if (json && typeof json === 'object' && json.categories){
+        for (const [cat, arr] of Object.entries(json.categories)){
+          (arr || []).forEach(it => items.push({ ...it, category: it.category || cat }));
+        }
+      } else {
+        throw new Error('Unexpected catalog format');
+      }
+
+      // Normalize URLs to be relative (so they work on GH Pages)
+      items = items.map(it => ({
+        ...it,
+        url: it.url.startsWith('http') ? it.url : it.url.replace(/^\.?\//,'./') // ensure ./ relative
+      }));
+
+      render(items);
+
+      // Auto-load from query
+      const p = new URLSearchParams(location.search);
+      const m = p.get('m');
+      const s = p.get('s');
+      if (m) loadModel(m, s || '');
+
+    }catch(err){
+      setStatus('Failed to load ./models/models.json — ' + (err.message || err));
+      // Fallback: if GH Action injected static HTML between markers, it will still work.
+    }
+  }
+
+  // Click -> Web View
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[data-model]');
     if (!a) return;
@@ -103,11 +195,6 @@
     loadModel(a.dataset.model, a.dataset.slug || '');
   });
 
-  // If URL has ?m=... auto-load that model
-  window.addEventListener('DOMContentLoaded', () => {
-    const p = new URLSearchParams(location.search);
-    const m = p.get('m');
-    const s = p.get('s');
-    if (m) loadModel(m, s || '');
-  });
+  loadCatalog();
 </script>
+</html>
