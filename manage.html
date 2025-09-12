@@ -1,103 +1,41 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Manage Models</title>
-<style>
-  :root{--bg:#0b0b0f;--fg:#eaeaf1;--card:#12131a;--line:#232633;--brand:#2563ff}
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,-apple-system,"Segoe UI",Roboto,Arial}
-  .wrap{max-width:1080px;margin:24px auto;padding:0 14px}
-  h1{margin:0 0 12px}
-  a.btn{display:inline-block;padding:12px 16px;border-radius:12px;background:var(--brand);color:#fff;text-decoration:none}
-  .row{display:grid;grid-template-columns: 1fr 1fr; gap:16px}
-  @media (max-width:980px){ .row{grid-template-columns:1fr} }
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}
-  .item{border:1px solid var(--line);border-radius:12px;padding:10px;background:#10121a;display:flex;flex-direction:column}
-  .thumb{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid #1e2230;background:#161820}
-  .slug{margin:8px 0 8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .rowbtns{display:flex;gap:8px;margin-top:auto}
-  .rowbtns a{flex:1;text-align:center;padding:8px 10px;border-radius:10px;text-decoration:none;border:1px solid #2a2f3a;color:var(--fg)}
-  .rowbtns a.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-  .muted{opacity:.8}
-  model-viewer{width:100%;height:520px;border-radius:12px;border:1px solid var(--line);background:#0f1118}
-  .viewer-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:8px}
-  .viewer-slug{font-weight:600}
-  .hint{font-size:13px;opacity:.75}
-  .banner{background:#1b2333;border:1px solid #31405a;color:#d8dcee;padding:10px 12px;border-radius:10px;margin:12px 0}
-  .pill{display:inline-block;font-size:12px;padding:4px 8px;border:1px solid #2a2f3a;border-radius:999px;margin-left:8px}
-</style>
-
-<!-- model-viewer web component -->
-<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-
-<div class="wrap">
-  <h1>Manage Models <span id="countPill" class="pill" hidden>0</span></h1>
-  <p class="muted">Preview models, open raw files, or add new ones via Meshy workflow.</p>
-
-  <p>
-    <a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank" rel="noopener">
-      ➕ Add New Model
-    </a>
-  </p>
-
-  <div id="banner" class="banner" hidden></div>
-
-  <div class="row">
-    <!-- Gallery -->
-    <div class="card">
-      <h2>Models</h2>
-      <div id="grid" class="grid">
-        <!-- Cards will be injected here -->
-      </div>
-      <p class="hint" style="margin-top:10px">
-        Loaded from <code>/models/models.json</code>. If you don’t see items, make sure GitHub Pages is serving the latest file (hard refresh).
-      </p>
-    </div>
-
-    <!-- Inline Viewer -->
-    <div class="card">
-      <div class="viewer-head">
-        <div>
-          <div class="muted" style="font-size:13px">Inline Web Viewer</div>
-          <div class="viewer-slug" id="viewerSlug">Nothing loaded yet</div>
-        </div>
-        <a id="openRaw" class="btn" href="#" target="_blank" rel="noopener" style="display:none">Open .glb</a>
-      </div>
-
-      <model-viewer id="mv"
-        src=""
-        ar
-        ar-modes="webxr scene-viewer quick-look"
-        camera-controls
-        touch-action="pan-y"
-        shadow-intensity="1"
-        exposure="1.0"
-        environment-image="neutral"
-        auto-rotate>
-      </model-viewer>
-      <p class="hint" style="margin-top:8px">
-        Supports pinch/zoom/rotate. AR works on supported devices.
-      </p>
-    </div>
-  </div>
-</div>
-
 <script>
 (async function(){
-  const banner = document.getElementById('banner');
-  const grid = document.getElementById('grid');
+  const banner = document.getElementById('banner') || (()=>{
+    const b=document.createElement('div'); b.id='banner'; b.style.cssText='background:#1b2333;border:1px solid #31405a;color:#d8dcee;padding:10px 12px;border-radius:10px;margin:12px 0';
+    document.querySelector('.wrap').insertBefore(b, document.querySelector('.row'));
+    return b;
+  })();
+  const grid = document.getElementById('grid') || (()=>{
+    const g=document.createElement('div'); g.id='grid'; g.className='grid'; document.body.appendChild(g); return g;
+  })();
   const countPill = document.getElementById('countPill');
 
-  function showError(msg){
-    banner.textContent = msg;
-    banner.hidden = false;
+  function msg(m){ banner.textContent = m; banner.hidden = false; }
+  function ok(){ banner.hidden = true; }
+
+  // Try both relative and absolute-to-repo paths (helps when served from /event-ar-demo/)
+  const candidates = [
+    './models/models.json',
+    '/event-ar-demo/models/models.json'
+  ];
+
+  async function tryFetchJSON(url){
+    const bust = `v=${Date.now()}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const full = url + sep + bust;
+    msg(`Fetching catalog: ${full}`);
+    const res = await fetch(full, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} at ${full}`);
+    const text = await res.text();
+    try {
+      return { data: JSON.parse(text), used: full };
+    } catch(e){
+      // show first 300 chars to catch BOM / HTML error pages
+      throw new Error(`JSON parse failed at ${full}\nFirst 300 chars:\n${text.slice(0,300)}`);
+    }
   }
 
   function normalizeCatalog(json){
-    // Accept either {categories:{...}} or plain array
     if (Array.isArray(json)) return json;
     if (json && typeof json === 'object' && json.categories){
       const out=[];
@@ -109,51 +47,67 @@
     return [];
   }
 
-  async function loadJSONWithBust(url){
-    const bust = `v=${Date.now()}`;
-    const sep = url.includes('?') ? '&' : '?';
-    const res = await fetch(url + sep + bust, { cache:'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+  // Fetch with fallback
+  let items=[], usedUrl='';
+  let lastErr = null;
+  for (const c of candidates){
+    try{
+      const r = await tryFetchJSON(c);
+      items = normalizeCatalog(r.data);
+      usedUrl = r.used;
+      ok();
+      break;
+    }catch(e){
+      lastErr = e;
+    }
   }
-
-  let items=[];
-  try{
-    const json = await loadJSONWithBust('./models/models.json');
-    items = normalizeCatalog(json);
-  }catch(e){
-    showError(`Failed to load catalog: ${e.message}. Check that /models/models.json is valid and reachable.`);
-    items = [];
-  }
-
-  if (!items.length){
-    grid.innerHTML = '<div class="muted">No models found.</div>';
-    countPill.hidden = true;
+  if (!usedUrl){
+    msg(`Failed to load catalog from any known path.\n${lastErr?.message || lastErr}`);
+    grid.innerHTML = '<div class="muted">No models.</div>';
     return;
   }
 
-  // Render cards
+  if (!items.length){
+    msg(`Loaded empty catalog from ${usedUrl}. Check file contents.`);
+  } else {
+    msg(`Loaded ${items.length} items from ${usedUrl}`);
+    setTimeout(ok, 1200);
+  }
+
+  // Render cards, with per-item link checks
   const frag = document.createDocumentFragment();
-  items.forEach((it, idx)=>{
+  let okCount = 0;
+
+  async function exists(url){
+    try{
+      const res = await fetch(url, { method:'HEAD' });
+      if (res.ok) return true;
+      // Some hosts disallow HEAD for blobs; fallback GET with minimal caching
+      const g = await fetch(url, { method:'GET', cache:'no-store' });
+      return g.ok;
+    }catch{ return false; }
+  }
+
+  for (const [i,it] of items.entries()){
     const card = document.createElement('div');
     card.className = 'item';
 
     const img = document.createElement('img');
     img.className = 'thumb';
     img.loading = 'lazy';
-    img.alt = it.name || it.url || 'model';
+    img.alt = it.name || it.url || `model-${i+1}`;
     img.src = it.thumbnail || './models/thumbs/placeholder.jpg';
     card.appendChild(img);
 
     const slug = document.createElement('div');
     slug.className = 'slug';
-    slug.textContent = it.name || (it.url ? it.url.split('/').pop() : `Model ${idx+1}`);
+    slug.textContent = it.name || (it.url ? it.url.split('/').pop() : `Model ${i+1}`);
     card.appendChild(slug);
 
     const meta = document.createElement('div');
     meta.className = 'muted';
     meta.style.fontSize = '12px';
-    meta.textContent = it.category ? `Category: ${it.category}` : '';
+    meta.textContent = [it.category ? `Category: ${it.category}` : null, it.url ? `URL: ${it.url}` : null].filter(Boolean).join(' · ');
     card.appendChild(meta);
 
     const row = document.createElement('div');
@@ -163,8 +117,6 @@
     view.href = '#';
     view.className = 'primary';
     view.textContent = 'Web View';
-    view.dataset.model = it.url;
-    view.dataset.slug = it.name || '';
     view.addEventListener('click', (e)=>{ e.preventDefault(); loadModel(it.url, it.name || ''); });
     row.appendChild(view);
 
@@ -175,35 +127,47 @@
     raw.textContent = 'Open .glb';
     row.appendChild(raw);
 
+    // Validation badges
+    const check = document.createElement('div');
+    check.className = 'muted';
+    check.style.fontSize = '12px';
+    check.style.marginTop = '6px';
+    check.textContent = 'checking links…';
+    card.appendChild(check);
+
+    // Asynchronously validate URLs; don’t block rendering
+    (async()=>{
+      const okModel = it.url ? await exists(it.url) : false;
+      const okThumb = it.thumbnail ? await exists(it.thumbnail) : true; // thumb is optional
+      if (okModel){ okCount++; }
+      check.textContent = `model: ${okModel?'OK':'404'} · thumb: ${okThumb?'OK':'404'}`;
+      if (!okModel) card.style.outline = '2px solid #ad2b2b';
+      if (countPill){ countPill.textContent = `${okCount}/${items.length}`; countPill.hidden = false; }
+    })();
+
     card.appendChild(row);
     frag.appendChild(card);
-  });
+  }
   grid.innerHTML = '';
   grid.appendChild(frag);
-  countPill.textContent = items.length;
-  countPill.hidden = false;
 
-  // Deep-link support (?m=&s=)
-  const p = new URLSearchParams(location.search);
-  const m = p.get('m');
-  const s = p.get('s');
-  if (m) loadModel(m, s || '');
-
+  // Inline viewer / deep link
   function loadModel(path, slug){
     const mv = document.getElementById('mv');
+    const openRaw = document.getElementById('openRaw');
+    if (!path){ return; }
     mv.src = path;
     document.getElementById('viewerSlug').textContent = slug || path.split('/').pop();
-    const openRaw = document.getElementById('openRaw');
-    openRaw.href = path;
-    openRaw.style.display = 'inline-block';
+    openRaw.href = path; openRaw.style.display = 'inline-block';
     const url = new URL(location.href);
     url.searchParams.set('m', path);
     url.searchParams.set('s', slug || '');
     history.replaceState({}, '', url);
   }
-
-  // Expose for buttons created above
   window.loadModel = loadModel;
+
+  const p = new URLSearchParams(location.search);
+  const m = p.get('m'); const s = p.get('s');
+  if (m) loadModel(m, s || '');
 })();
 </script>
-</html>
