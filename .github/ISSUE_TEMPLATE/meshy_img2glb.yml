@@ -1,0 +1,131 @@
+name: Meshy: Image → GLB
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run:
+    if: contains(github.event.issue.labels.*.name, 'meshy:img2glb')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Parse Issue Form
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            function section(label){
+              const re = new RegExp(`###\\s*${label}\\s*\\n([\\s\\S]*?)(?:\\n###|$)`, 'i');
+              const m = body.match(re);
+              return (m ? m[1] : '').trim();
+            }
+            function pickYN(label, def='yes'){
+              const v = section(label).toLowerCase();
+              if (v.includes('yes')) return 'yes';
+              if (v.includes('no'))  return 'no';
+              return def;
+            }
+            function checked(lbl){
+              const idx = body.indexOf(lbl);
+              if (idx === -1) return false;
+              const tail = body.slice(idx);
+              return /\- \[x\]/i.test(tail);
+            }
+
+            core.setOutput('image_url',     section('Image URL'));
+            core.setOutput('name',          section('Model Name'));
+            core.setOutput('category',      section('Category'));
+            core.setOutput('poly',          (section('Polygon mode') || 'adaptive').toLowerCase());
+            core.setOutput('target',        section('Target polycount (only if mode=target)'));
+            core.setOutput('topology',      (section('Topology') || 'quad').toLowerCase());
+            core.setOutput('texture',       pickYN('Texture maps', 'yes'));
+            core.setOutput('pbr',           pickYN('PBR maps', 'yes'));
+            core.setOutput('texture_size',  section('Texture size') || '2048');
+            core.setOutput('prompt',        section('Prompt (optional)'));
+            core.setOutput('thumb',         checked('Use preview image as thumbnail') ? 'true' : '');
+
+      - name: Show parsed
+        run: |
+          echo "image_url=${{ steps.parse.outputs.image_url }}"
+          echo "name=${{ steps.parse.outputs.name }}"
+          echo "category=${{ steps.parse.outputs.category }}"
+          echo "poly=${{ steps.parse.outputs.poly }}"
+          echo "target=${{ steps.parse.outputs.target }}"
+          echo "topology=${{ steps.parse.outputs.topology }}"
+          echo "texture=${{ steps.parse.outputs.texture }}"
+          echo "pbr=${{ steps.parse.outputs.pbr }}"
+          echo "texture_size=${{ steps.parse.outputs.texture_size }}"
+          echo "thumb=${{ steps.parse.outputs.thumb }}"
+          echo "prompt=${{ steps.parse.outputs.prompt }}"
+
+      - name: Run Meshy → GLB
+        id: run
+        env:
+          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
+          # Use your known-good base; you can override via repo secret later if needed.
+          MESHY_BASE_URL: ${{ secrets.MESHY_BASE_URL || 'https://api.meshy.ai/openapi/v1' }}
+        run: |
+          node tools/meshy-img2glb.cjs \
+            --imageUrl "${{ steps.parse.outputs.image_url }}" \
+            --name     "${{ steps.parse.outputs.name }}" \
+            --category "${{ steps.parse.outputs.category }}" \
+            --poly     "${{ steps.parse.outputs.poly }}" \
+            --topology "${{ steps.parse.outputs.topology }}" \
+            $( [ "${{ steps.parse.outputs.poly }}" = "target" ] && echo --target "${{ steps.parse.outputs.target }}") \
+            --texture  "${{ steps.parse.outputs.texture }}" \
+            --pbr      "${{ steps.parse.outputs.pbr }}" \
+            --textureSize "${{ steps.parse.outputs.texture_size }}" \
+            $( [ "${{ steps.parse.outputs.thumb }}" = "true" ] && echo --thumbFromPreview ) \
+            $( [ -n "${{ steps.parse.outputs.prompt }}" ] && echo --prompt "${{ steps.parse.outputs.prompt }}")
+
+      - name: Commit changes
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add models/
+          git commit -m "Meshy: add ${{ steps.parse.outputs.name }}" || echo "Nothing to commit"
+          git push
+
+      - name: Find added GLB (for links)
+        id: find
+        shell: bash
+        run: |
+          FILE=$(git diff --name-only HEAD~1..HEAD | grep -E '^models/.*\.glb$' | head -n1 || true)
+          echo "glb=$FILE" >> $GITHUB_OUTPUT
+
+      - name: Comment with links
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const glb = `${{ toJSON(steps.find.outputs.glb) }}`.replace(/^"|"$/g,'');
+            const name = `${{ toJSON(steps.parse.outputs.name) }}`.replace(/^"|"$/g,'');
+            const base = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            let body = `✅ **${name}** processed and committed.\n`;
+            if (glb) {
+              body += `\n- GLB: ${base}/${glb}`;
+            }
+            body += `\n- Try in AR: ${base}/index-multi.html`;
+            body += `\n- Place on photo: ${base}/image-place.html`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
