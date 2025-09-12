@@ -1,43 +1,106 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Manage Models</title>
+
+<style>
+  :root{--bg:#0b0b0f;--fg:#eaeaf1;--card:#12131a;--line:#232633;--brand:#2563ff}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--fg);font:15px system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+  a.btn{display:inline-block;padding:10px 14px;border-radius:12px;background:var(--brand);color:#fff;text-decoration:none;white-space:nowrap}
+  #debug{background:#13213a;border:1px solid #2b3c5c;color:#cfe3ff;padding:10px 12px;border-radius:10px;margin:8px 0;white-space:pre-wrap}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:900px){ .row{grid-template-columns:1fr} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;min-height:120px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .item{border:1px solid var(--line);border-radius:12px;padding:10px;background:#10121a}
+  .thumb{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid #1e2230;background:#161820}
+  .name{margin:8px 0 6px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .muted{opacity:.8;font-size:12px}
+  .rowbtns{display:flex;gap:8px;margin-top:8px}
+  .rowbtns a{flex:1;text-align:center;padding:8px 10px;border-radius:10px;text-decoration:none;border:1px solid #2a2f3a;color:var(--fg)}
+  .rowbtns a.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  model-viewer{width:100%;height:520px;border-radius:12px;border:1px solid var(--line);background:#0f1118}
+</style>
+
+<!-- model-viewer web component -->
+<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+<div class="wrap">
+  <header>
+    <h1 style="margin:0;font-size:20px">Manage Models</h1>
+    <a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank" rel="noopener">➕ Add New Model</a>
+  </header>
+
+  <!-- On-page diagnostics -->
+  <div id="debug">boot…</div>
+
+  <div class="row">
+    <div class="card">
+      <h2 style="margin:0 0 8px;font-size:16px">Models <span id="count" class="muted"></span></h2>
+      <div id="grid" class="grid"></div>
+      <p class="muted" style="margin-top:8px">This list is read from <code>/models/models.json</code>.</p>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div class="muted">Inline Web Viewer</div>
+          <div id="viewerSlug" style="font-weight:600">Nothing loaded yet</div>
+        </div>
+        <a id="openRaw" class="btn" href="#" target="_blank" rel="noopener" style="display:none">Open .glb</a>
+      </div>
+
+      <model-viewer id="mv"
+        src=""
+        ar
+        ar-modes="webxr scene-viewer quick-look"
+        camera-controls
+        touch-action="pan-y"
+        shadow-intensity="1"
+        exposure="1"
+        auto-rotate>
+      </model-viewer>
+      <p class="muted" style="margin-top:8px">Tip: Use “Web View” on a card to load it here.</p>
+    </div>
+  </div>
+</div>
+
 <script>
 (async function(){
-  const banner = document.getElementById('banner') || (()=>{
-    const b=document.createElement('div'); b.id='banner'; b.style.cssText='background:#1b2333;border:1px solid #31405a;color:#d8dcee;padding:10px 12px;border-radius:10px;margin:12px 0';
-    document.querySelector('.wrap').insertBefore(b, document.querySelector('.row'));
-    return b;
-  })();
-  const grid = document.getElementById('grid') || (()=>{
-    const g=document.createElement('div'); g.id='grid'; g.className='grid'; document.body.appendChild(g); return g;
-  })();
-  const countPill = document.getElementById('countPill');
+  const debug = document.getElementById('debug');
+  const grid  = document.getElementById('grid');
+  const count = document.getElementById('count');
 
-  function msg(m){ banner.textContent = m; banner.hidden = false; }
-  function ok(){ banner.hidden = true; }
+  const log = (msg)=>{ debug.textContent = String(msg); };
+  const ok  = ()=>{ debug.style.display='none'; };
 
-  // Try both relative and absolute-to-repo paths (helps when served from /event-ar-demo/)
+  // Paths to try (helps both root and /event-ar-demo/ GitHub Pages context)
   const candidates = [
     './models/models.json',
     '/event-ar-demo/models/models.json'
   ];
 
-  async function tryFetchJSON(url){
-    const bust = `v=${Date.now()}`;
-    const sep = url.includes('?') ? '&' : '?';
-    const full = url + sep + bust;
-    msg(`Fetching catalog: ${full}`);
-    const res = await fetch(full, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status} at ${full}`);
-    const text = await res.text();
+  async function fetchJSON(url){
+    const full = url + (url.includes('?')?'&':'?') + 'v=' + Date.now();
+    log('Fetching: ' + full);
+    const r = await fetch(full, { cache:'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${full}`);
+    const text = await r.text();
     try {
       return { data: JSON.parse(text), used: full };
     } catch(e){
-      // show first 300 chars to catch BOM / HTML error pages
-      throw new Error(`JSON parse failed at ${full}\nFirst 300 chars:\n${text.slice(0,300)}`);
+      throw new Error(`JSON parse failed for ${full}\nFirst 200 chars:\n` + text.slice(0,200));
     }
   }
 
-  function normalizeCatalog(json){
+  function flatten(json){
     if (Array.isArray(json)) return json;
-    if (json && typeof json === 'object' && json.categories){
+    if (json && typeof json==='object' && json.categories){
       const out=[];
       for (const [cat, arr] of Object.entries(json.categories)){
         (arr||[]).forEach(it=> out.push({...it, category: it.category || cat}));
@@ -47,127 +110,102 @@
     return [];
   }
 
-  // Fetch with fallback
-  let items=[], usedUrl='';
+  let usedUrl = ''; let items = [];
   let lastErr = null;
   for (const c of candidates){
     try{
-      const r = await tryFetchJSON(c);
-      items = normalizeCatalog(r.data);
+      const r = await fetchJSON(c);
+      items = flatten(r.data);
       usedUrl = r.used;
-      ok();
       break;
-    }catch(e){
-      lastErr = e;
-    }
+    }catch(e){ lastErr = e; }
   }
   if (!usedUrl){
-    msg(`Failed to load catalog from any known path.\n${lastErr?.message || lastErr}`);
-    grid.innerHTML = '<div class="muted">No models.</div>';
+    log('❌ Failed to load catalog from any known path.\n' + (lastErr?.message||lastErr));
     return;
   }
 
-  if (!items.length){
-    msg(`Loaded empty catalog from ${usedUrl}. Check file contents.`);
-  } else {
-    msg(`Loaded ${items.length} items from ${usedUrl}`);
-    setTimeout(ok, 1200);
+  log(`✅ Loaded ${items.length} items from ${usedUrl}`);
+  setTimeout(ok, 900);
+
+  // Render
+  const frag = document.createDocumentFragment();
+  let okModels = 0;
+
+  async function exists(u){
+    try{
+      const r = await fetch(u, { method:'HEAD' });
+      if (r.ok) return true;
+      const g = await fetch(u, { cache:'no-store' });
+      return g.ok;
+    }catch{return false;}
   }
 
-  // Render cards, with per-item link checks
-  const frag = document.createDocumentFragment();
-  let okCount = 0;
-
-  async function exists(url){
-    try{
-      const res = await fetch(url, { method:'HEAD' });
-      if (res.ok) return true;
-      // Some hosts disallow HEAD for blobs; fallback GET with minimal caching
-      const g = await fetch(url, { method:'GET', cache:'no-store' });
-      return g.ok;
-    }catch{ return false; }
+  function makeAbsMaybe(p){
+    // If value starts with './' keep as-is; if it starts with '/event-ar-demo/' keep as-is;
+    // otherwise, prefer relative path as provided by models.json.
+    return p;
   }
 
   for (const [i,it] of items.entries()){
-    const card = document.createElement('div');
-    card.className = 'item';
+    const card = document.createElement('div'); card.className='item';
 
-    const img = document.createElement('img');
-    img.className = 'thumb';
-    img.loading = 'lazy';
+    const thumbSrc = it.thumbnail || './models/thumbs/placeholder.jpg';
+    const img = document.createElement('img'); img.className='thumb'; img.loading='lazy';
+    img.src = makeAbsMaybe(thumbSrc);
     img.alt = it.name || it.url || `model-${i+1}`;
-    img.src = it.thumbnail || './models/thumbs/placeholder.jpg';
     card.appendChild(img);
 
-    const slug = document.createElement('div');
-    slug.className = 'slug';
-    slug.textContent = it.name || (it.url ? it.url.split('/').pop() : `Model ${i+1}`);
-    card.appendChild(slug);
+    const name = document.createElement('div'); name.className='name';
+    name.textContent = it.name || (it.url ? it.url.split('/').pop() : `Model ${i+1}`);
+    card.appendChild(name);
 
-    const meta = document.createElement('div');
-    meta.className = 'muted';
-    meta.style.fontSize = '12px';
-    meta.textContent = [it.category ? `Category: ${it.category}` : null, it.url ? `URL: ${it.url}` : null].filter(Boolean).join(' · ');
+    const meta = document.createElement('div'); meta.className='muted';
+    meta.textContent = [it.category && `Category: ${it.category}`, it.url && `URL: ${it.url}`].filter(Boolean).join(' · ');
     card.appendChild(meta);
 
-    const row = document.createElement('div');
-    row.className = 'rowbtns';
+    const btns = document.createElement('div'); btns.className='rowbtns';
+    const web = document.createElement('a'); web.href='#'; web.className='primary'; web.textContent='Web View';
+    web.addEventListener('click',(e)=>{ e.preventDefault(); loadModel(it.url, it.name||''); });
+    btns.appendChild(web);
 
-    const view = document.createElement('a');
-    view.href = '#';
-    view.className = 'primary';
-    view.textContent = 'Web View';
-    view.addEventListener('click', (e)=>{ e.preventDefault(); loadModel(it.url, it.name || ''); });
-    row.appendChild(view);
+    const raw = document.createElement('a'); raw.href = it.url; raw.target='_blank'; raw.rel='noopener'; raw.textContent='Open .glb';
+    btns.appendChild(raw);
 
-    const raw = document.createElement('a');
-    raw.href = it.url;
-    raw.target = '_blank';
-    raw.rel = 'noopener';
-    raw.textContent = 'Open .glb';
-    row.appendChild(raw);
+    const chk = document.createElement('div'); chk.className='muted'; chk.style.marginTop='6px'; chk.textContent='checking…';
+    card.appendChild(btns); card.appendChild(chk);
 
-    // Validation badges
-    const check = document.createElement('div');
-    check.className = 'muted';
-    check.style.fontSize = '12px';
-    check.style.marginTop = '6px';
-    check.textContent = 'checking links…';
-    card.appendChild(check);
-
-    // Asynchronously validate URLs; don’t block rendering
     (async()=>{
       const okModel = it.url ? await exists(it.url) : false;
-      const okThumb = it.thumbnail ? await exists(it.thumbnail) : true; // thumb is optional
-      if (okModel){ okCount++; }
-      check.textContent = `model: ${okModel?'OK':'404'} · thumb: ${okThumb?'OK':'404'}`;
-      if (!okModel) card.style.outline = '2px solid #ad2b2b';
-      if (countPill){ countPill.textContent = `${okCount}/${items.length}`; countPill.hidden = false; }
+      const okThumb = it.thumbnail ? await exists(it.thumbnail) : true;
+      if (okModel) okModels++;
+      chk.textContent = `model: ${okModel?'OK':'404'} · thumb: ${okThumb?'OK':'404'}`;
+      if (!okModel) card.style.outline='2px solid #b33a3a';
+      count.textContent = `${okModels}/${items.length} ready`;
     })();
 
-    card.appendChild(row);
     frag.appendChild(card);
   }
-  grid.innerHTML = '';
-  grid.appendChild(frag);
+  grid.innerHTML=''; grid.appendChild(frag);
 
-  // Inline viewer / deep link
+  // Inline viewer
   function loadModel(path, slug){
+    if (!path) return;
     const mv = document.getElementById('mv');
     const openRaw = document.getElementById('openRaw');
-    if (!path){ return; }
     mv.src = path;
     document.getElementById('viewerSlug').textContent = slug || path.split('/').pop();
-    openRaw.href = path; openRaw.style.display = 'inline-block';
+    openRaw.href = path; openRaw.style.display='inline-block';
     const url = new URL(location.href);
     url.searchParams.set('m', path);
-    url.searchParams.set('s', slug || '');
-    history.replaceState({}, '', url);
+    url.searchParams.set('s', slug||'');
+    history.replaceState({},'',url);
   }
   window.loadModel = loadModel;
 
-  const p = new URLSearchParams(location.search);
-  const m = p.get('m'); const s = p.get('s');
-  if (m) loadModel(m, s || '');
+  // Deep link support
+  const params = new URLSearchParams(location.search);
+  const m = params.get('m'); const s = params.get('s');
+  if (m) loadModel(m, s||'');
 })();
 </script>
