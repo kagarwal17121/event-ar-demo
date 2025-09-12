@@ -4,19 +4,81 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Manage Models</title>
 <style>
-  body{margin:0;background:#0b0b0f;color:#eaeaf1;font:16px system-ui,-apple-system,Segoe UI,Roboto}
-  .wrap{max-width:720px;margin:40px auto;padding:0 16px}
-  a.btn{display:inline-block;padding:14px 18px;border-radius:12px;background:#2563ff;color:#fff;text-decoration:none}
-  .card{background:#12131a;border:1px solid #232633;border-radius:14px;padding:16px;margin-top:16px}
+  :root{--bg:#0b0b0f;--fg:#eaeaf1;--card:#12131a;--line:#232633;--brand:#2563ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+  .wrap{max-width:960px;margin:40px auto;padding:0 16px}
+  h1{margin:0 0 12px;font-size:28px}
+  p{margin:0 0 14px}
+  a{color:#c6d2ff}
+  a.btn{display:inline-block;padding:12px 16px;border-radius:12px;background:var(--brand);color:#fff;text-decoration:none}
+  .row{display:flex;flex-wrap:wrap;gap:16px}
+  .col{flex:1 1 300px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h2{font-size:18px;margin:0 0 10px}
+  .muted{opacity:.8}
+  .models-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:12px}
+  .model{background:#0f1016;border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:10px;align-items:center}
+  .thumb{width:64px;height:64px;border-radius:10px;background:#161820;border:1px solid #1e2230;object-fit:cover;flex:0 0 64px}
+  .model .meta{min-width:0}
+  .model .meta .slug{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .model .links{font-size:13px}
+  .footer{margin:28px 0 6px;font-size:13px;opacity:.7}
 </style>
+
 <div class="wrap">
   <h1>The New Innings Planner — Manage</h1>
-  <p><a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank">➕ Create Model from Image</a></p>
-  <div class="card">
-    <p>Live demos:</p>
-    <ul>
-      <li><a href="./index-multi.html">Real-time AR demo</a></li>
-      <li><a href="./image-place.html">Place on photo</a></li>
-    </ul>
+  <p class="muted">Create models from an image prompt, then use them in the live demos.</p>
+
+  <div class="row" style="margin-top:14px">
+    <div class="col">
+      <a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank" rel="noopener">
+        ➕ Create Model from Image
+      </a>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h2>Live demos</h2>
+        <ul>
+          <li><a href="./index-multi.html">Real-time AR demo</a></li>
+          <li><a href="./image-place.html">Place on photo</a></li>
+        </ul>
+        <p class="muted" style="margin-top:8px">
+          Tip: After a model is generated, refresh this page to see it listed below.
+        </p>
+      </div>
+    </div>
   </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Models</h2>
+    <p class="muted">Newest entries appear first in <code>models/models.json</code>.
+      <a href="./models/models.json" target="_blank" rel="noopener">Open models.json</a>
+    </p>
+
+    <!-- MODELS-START -->
+    <div class="models-grid">
+      <!-- The GitHub Action will replace this entire block with generated model cards.
+           Each card format (example):
+           <div class="model">
+             <img class="thumb" src="models/thumbs/my-chair.jpg" alt="my-chair thumbnail">
+             <div class="meta">
+               <div class="slug">my-chair</div>
+               <div class="links">
+                 <a href="models/my-chair.glb" target="_blank" rel="noopener">Download GLB</a>
+                 · <a href="./index-multi.html" target="_blank" rel="noopener">Open demo</a>
+               </div>
+             </div>
+           </div>
+      -->
+    </div>
+    <!-- MODELS-END -->
+  </div>
+
+  <div class="footer">© <span id="y"></span> The New Innings Planner</div>
 </div>
+
+<script>
+  // Tiny year update (no external JS)
+  document.getElementById('y').textContent = new Date().getFullYear();
+</script>
