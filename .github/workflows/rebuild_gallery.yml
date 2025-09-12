@@ -1,10 +1,10 @@
 name: Rebuild Gallery from /models
 
 on:
-  workflow_dispatch: {}   # run manually from the Actions tab
+  workflow_dispatch: {}       # run manually from the Actions tab
   push:
     paths:
-      - "models/**"       # also run when you add/change GLBs or thumbs
+      - "models/**"           # also run automatically when models change
 
 permissions:
   contents: write
@@ -23,7 +23,6 @@ jobs:
         run: |
           set -e
           mkdir -p models
-          # Create JSON array from all GLBs. If no GLBs, create [].
           if ls models/*.glb >/dev/null 2>&1; then
             LIST_JSON="$(
               for f in models/*.glb; do
@@ -33,7 +32,6 @@ jobs:
                 if [ -f "models/thumbs/${slug}.jpg" ]; then
                   thumb="models/thumbs/${slug}.jpg"
                 fi
-                # one JSON object per file
                 jq -n --arg id "$slug" --arg slug "$slug" --arg glb "$f" --arg thumb "$thumb" '
                   {id:$id, slug:$slug, glb:$glb} +
                   ( ( $thumb | select(. != "") ) as $t | if $t then {thumb:$t} else {} end )
@@ -47,39 +45,33 @@ jobs:
           echo "Wrote models/models.json:"
           cat models/models.json
 
-      - name: Update manage.html (inject cards)
+      - name: Inject cards into manage.html
         run: |
           set -e
           if [ ! -f manage.html ]; then
             echo "manage.html not found at repo root."
-            echo "Please add the page (see step 2 of my instructions) and re-run."
             exit 1
           fi
 
-          # Build cards from models/models.json
           CARDS="$(jq -r '
-            (if length > 0 and (.[0] | has("createdAt")) then sort_by(.createdAt) | reverse else . end)
-            | map(
-                (.thumb // "") as $t
-                |
-                "<div class=\"item\">"
-                + ( if $t != "" then
-                      "<img class=\"thumb\" src=\"" + $t + "\" alt=\"" + .slug + " thumbnail\"/>"
-                    else
-                      ""  # omit image if no thumbnail exists
-                  end )
-                + "<div class=\"slug\">" + .slug + "</div>"
-                + "<div class=\"rowbtns\">"
-                +   "<a class=\"primary\" href=\"#\" data-model=\"" + (.glb|gsub(\"^\\\\./\";\"\")) + "\" data-slug=\"" + .slug + "\">Web View</a>"
-                + "</div>"
-                + "</div>"
-              )
+            map(
+              (.thumb // "") as $t
+              |
+              "<div class=\"item\">"
+              + ( if $t != "" then
+                    "<img class=\"thumb\" src=\"" + $t + "\" alt=\"" + .slug + " thumbnail\"/>"
+                  else "" end )
+              + "<div class=\"slug\">" + .slug + "</div>"
+              + "<div class=\"rowbtns\">"
+              +   "<a class=\"primary\" href=\"#\" data-model=\"" + (.glb|gsub(\"^\\\\./\";\"\")) + "\" data-slug=\"" + .slug + "\">Web View</a>"
+              + "</div>"
+              + "</div>"
+            )
             | join("\n")
           ' models/models.json 2>/dev/null || echo "")"
 
           HTML_BLOCK=$'<!-- MODELS-START -->\n<div class="grid">\n'"${CARDS}"$'\n</div>\n<!-- MODELS-END -->'
 
-          # Replace block between markers in manage.html
           awk -v repl="$HTML_BLOCK" '
             BEGIN { inblk=0 }
             /<!--[[:space:]]*MODELS-START[[:space:]]*-->/ { print repl; inblk=1; next }
@@ -94,5 +86,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add models/models.json manage.html
-          git commit -m "Rebuild gallery from /models and update manage.html" || echo "No changes to commit"
+          git commit -m "Rebuild manage.html model list from /models" || echo "No changes to commit"
           git push
