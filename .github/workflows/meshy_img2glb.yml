@@ -1,0 +1,141 @@
+name: Meshy Pipeline
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run-meshy:
+    runs-on: ubuntu-latest
+    if: contains(join(github.event.issue.labels.*.name), 'meshy_img2glb')
+
+    env:
+      ISSUE_BODY: ${{ github.event.issue.body }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ACTOR: ${{ github.actor }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Parse issue fields
+        id: parse
+        run: |
+          parse_section () {
+            awk -v target="$1" '
+              BEGIN{found=0}
+              $0 ~ "^### " {
+                if(found==1){exit}
+                if($0 ~ "^### "target"$"){found=1; next}
+              }
+              found==1 {print}
+            '
+          }
+          echo "${ISSUE_BODY}" > body.txt
+
+          SLUG=$(parse_section "Model Slug" < body.txt | head -n1 | xargs)
+          PROMPT=$(parse_section "Prompt" < body.txt | xargs)
+          IMAGE=$(parse_section "Image URL" < body.txt | head -n1 | xargs)
+
+          SAFE=$(echo "$SLUG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/-/g')
+
+          echo "slug=$SAFE" >> $GITHUB_OUTPUT
+          echo "prompt=$PROMPT" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Call Meshy
+        id: meshy
+        env:
+          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
+        run: |
+          if [ -n "${{ steps.parse.outputs.image }}" ]; then
+            URL="https://api.meshy.ai/v2/image-to-3d"
+            JSON=$(jq -n --arg p "${{ steps.parse.outputs.prompt }}" --arg i "${{ steps.parse.outputs.image }}" \
+              '{prompt:$p,image_url:$i,output_format:"glb"}')
+          else
+            URL="https://api.meshy.ai/v2/text-to-3d"
+            JSON=$(jq -n --arg p "${{ steps.parse.outputs.prompt }}" \
+              '{prompt:$p,output_format:"glb"}')
+          fi
+          RES=$(curl -s -X POST "$URL" \
+            -H "Authorization: Bearer $MESHY_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON")
+          echo "$RES" > start.json
+          echo "task=$(jq -r '.task_id // .id' start.json)" >> $GITHUB_OUTPUT
+
+      - name: Wait for Meshy
+        id: poll
+        env:
+          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
+          TASK: ${{ steps.meshy.outputs.task }}
+        run: |
+          for i in $(seq 1 300); do
+            R=$(curl -s -H "Authorization: Bearer $MESHY_API_KEY" "https://api.meshy.ai/v2/tasks/$TASK")
+            STATUS=$(echo "$R" | jq -r .status)
+            if [ "$STATUS" = "SUCCEEDED" ]; then
+              GLB=$(echo "$R" | jq -r '.result.glb_url')
+              THUMB=$(echo "$R" | jq -r '.result.thumbnail_url')
+              echo "glb=$GLB" >> $GITHUB_OUTPUT
+              echo "thumb=$THUMB" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            [ "$STATUS" = "FAILED" ] && exit 1
+            sleep 5
+          done
+          exit 1
+
+      - name: Save files
+        run: |
+          mkdir -p models/thumbs
+          curl -L "${{ steps.poll.outputs.glb }}" -o "models/${{ steps.parse.outputs.slug }}.glb"
+          if [ -n "${{ steps.poll.outputs.thumb }}" ]; then
+            curl -L "${{ steps.poll.outputs.thumb }}" -o "models/thumbs/${{ steps.parse.outputs.slug }}.jpg"
+          fi
+
+      - name: Update models.json
+        run: |
+          [ ! -f models/models.json ] && echo "[]" > models/models.json
+          ENTRY=$(jq -n \
+            --arg s "${{ steps.parse.outputs.slug }}" \
+            --arg p "${{ steps.parse.outputs.prompt }}" \
+            --arg g "models/${{ steps.parse.outputs.slug }}.glb" \
+            --arg t "models/thumbs/${{ steps.parse.outputs.slug }}.jpg" \
+            '{id:$s,slug:$s,prompt:$p,glb:$g,thumb:$t}')
+          TMP=$(mktemp)
+          jq --argjson e "$ENTRY" 'map(select(.id != $e.id)) + [$e]' models/models.json > $TMP
+          mv $TMP models/models.json
+
+      - name: Update manage.html
+        run: |
+          CARDS=$(jq -r '
+            map(
+              "<div class=\"item\">"
+              + "<img class=thumb src=\"" + .thumb + "\"/>"
+              + "<div class=slug>" + .slug + "</div>"
+              + "<div class=rowbtns><a class=primary href=\"#\" data-model=\"" + .glb + "\" data-slug=\"" + .slug + "\">Web View</a></div>"
+              + "</div>"
+            ) | join("\n")
+          ' models/models.json)
+          BLOCK="<!-- MODELS-START -->\n<div class=\"grid\">\n$CARDS\n</div>\n<!-- MODELS-END -->"
+          awk -v repl="$BLOCK" '
+            BEGIN{inblk=0}
+            /<!-- MODELS-START -->/{print repl;inblk=1;next}
+            /<!-- MODELS-END -->/ && inblk==1{inblk=0;next}
+            inblk==1{next}{print}
+          ' manage.html > tmp && mv tmp manage.html
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add models manage.html
+          git commit -m "Add model ${{ steps.parse.outputs.slug }}" || echo "No changes"
+          git push
