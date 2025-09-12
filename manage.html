@@ -32,18 +32,23 @@
 
 <div class="wrap">
   <h1>Manage Models</h1>
-  <p class="muted">Click “Web View” to preview a model inline. Add new models via your Issue form whenever you want.</p>
+  <p class="muted">Click “Web View” to preview a model inline. Use the button below to add new models.</p>
+
+  <!-- Keep this button OUTSIDE the markers so it never gets overwritten -->
+  <p>
+    <a class="btn" href="https://github.com/kagarwal17121/event-ar-demo/issues/new?template=meshy_img2glb.yml" target="_blank" rel="noopener">
+      ➕ Add New Model
+    </a>
+  </p>
 
   <div class="row">
-    <!-- Gallery -->
+    <!-- Gallery (the workflow ONLY replaces the part between the markers) -->
     <div class="card">
       <h2>Models</h2>
-<!-- MODELS-START -->
-<div class="grid">
-
-</div>
-<!-- MODELS-END -->
-      <p class="hint">This list is auto-generated from the files in <code>/models</code>.</p>
+      <!-- MODELS-START -->
+      <div class="grid"></div>
+      <!-- MODELS-END -->
+      <p class="hint">This list is auto-generated from files in <code>/models</code>.</p>
     </div>
 
     <!-- Inline Viewer -->
@@ -88,6 +93,7 @@
     history.replaceState({}, '', url);
   }
 
+  // Web View buttons (generated inside the markers) use data-model and data-slug
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[data-model]');
     if (!a) return;
@@ -95,6 +101,7 @@
     loadModel(a.dataset.model, a.dataset.slug || '');
   });
 
+  // If URL has ?m=... auto-load that model
   window.addEventListener('DOMContentLoaded', () => {
     const p = new URLSearchParams(location.search);
     const m = p.get('m');
